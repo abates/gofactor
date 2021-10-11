@@ -38,13 +38,13 @@ func (cc *valueCleaner) separateValDecl(decl *ast.GenDecl) {
 			vs := spec.(*ast.ValueSpec)
 			if len(vs.Names) < 2 {
 				if lastType == "" {
-					lastType = cc.typStr(vs)
+					lastType = typStr(vs.Type)
 				}
 
 				// check if the next spec type is different than
 				// the previous, and if so, close the block
 				// and start a new one
-				if vs.Type != nil && lastType != cc.typStr(vs) {
+				if vs.Type != nil && lastType != typStr(vs.Type) {
 					// make sure to capture the comment
 					end := prev.End()
 					if prev.Comment != nil {
@@ -62,7 +62,7 @@ func (cc *valueCleaner) separateValDecl(decl *ast.GenDecl) {
 					// end the const block and start a new one
 					// with the next spec
 					cc.write(fmt.Sprintf("\n)\n\n%s (\n", decl.Tok))
-					lastType = cc.typStr(vs)
+					lastType = typStr(vs.Type)
 					pos = start
 				}
 			}
@@ -91,7 +91,12 @@ func (cc *valueCleaner) separateValDecls() {
 				pos = decl.Pos()
 			}
 		} else {
+			cc.writePos(pos, decl.End())
 			pos = decl.End()
 		}
+	}
+
+	if pos != cc.f.End() {
+		cc.writePos(pos, cc.f.End())
 	}
 }

@@ -33,9 +33,16 @@ func (f *formatter) writePos(start, end token.Pos) {
 	f.writer.Write(f.src[start-1 : end-1])
 }
 
-func (f *formatter) typStr(vs *ast.ValueSpec) string {
-	if vs == nil {
+func typStr(expr ast.Expr) (str string) {
+	if expr == nil {
 		return ""
 	}
-	return string(f.src[vs.Type.Pos():vs.Type.End()])
+
+	switch t := expr.(type) {
+	case *ast.Ident:
+		str = t.Name
+	case *ast.StarExpr:
+		str = typStr(t.X)
+	}
+	return str
 }

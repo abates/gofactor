@@ -1,0 +1,15 @@
+package foo
+
+const a, b, c = 1, 2, 3
+
+const (
+	Int1 int = iota
+	Int2
+	Int3
+	Int4
+
+	Str1 string = "string1"
+	Str2        = "string2"
+	Str3        = "string3"
+	Str4        = "string4"
+)

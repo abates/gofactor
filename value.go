@@ -33,6 +33,7 @@ func (cc *valueCleaner) separateValDecl(decl *ast.GenDecl) {
 	// only refactor parenthesized decalarations
 	if decl.Lparen.IsValid() {
 		lastType := ""
+		var prev *ast.ValueSpec
 		for _, spec := range decl.Specs {
 			vs := spec.(*ast.ValueSpec)
 			if len(vs.Names) < 2 {
@@ -40,19 +41,32 @@ func (cc *valueCleaner) separateValDecl(decl *ast.GenDecl) {
 					lastType = cc.typStr(vs)
 				}
 
+				// check if the next spec type is different than
+				// the previous, and if so, close the block
+				// and start a new one
 				if vs.Type != nil && lastType != cc.typStr(vs) {
 					// make sure to capture the comment
+					end := prev.End()
+					if prev.Comment != nil {
+						end = prev.Comment.End()
+					}
+
+					// write out the previous spec
+					cc.writePos(pos, end)
+
 					start := vs.Pos()
 					if vs.Doc != nil {
 						start = vs.Doc.Pos()
 					}
 
-					cc.writePos(pos, start)
+					// end the const block and start a new one
+					// with the next spec
 					cc.write(fmt.Sprintf("\n)\n\n%s (\n", decl.Tok))
 					lastType = cc.typStr(vs)
 					pos = start
 				}
 			}
+			prev = vs
 		}
 
 		if pos != decl.Pos() {

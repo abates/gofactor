@@ -24,10 +24,12 @@ type formatter struct {
 }
 
 func (f *formatter) write(str string) {
+	//println("Writing:", str)
 	f.writer.Write([]byte(str))
 }
 
 func (f *formatter) writePos(start, end token.Pos) {
+	//println("Writing:", string(f.src[start-1:end-1]))
 	f.writer.Write(f.src[start-1 : end-1])
 }
 

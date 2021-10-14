@@ -11,7 +11,7 @@ import (
 func Organize(filename string, input []byte) (output []byte, err error) {
 	input, err = SeparateValues(filename, input)
 	if err != nil {
-		return nil, err
+		return input, err
 	}
 
 	o := &organizer{
@@ -31,6 +31,11 @@ func Organize(filename string, input []byte) (output []byte, err error) {
 	return output, err
 }
 
+type namedSrc interface {
+	name() string
+	write(*formatter)
+}
+
 type namedList []namedSrc
 
 func (o namedList) Len() int           { return len(o) }
@@ -43,14 +48,14 @@ func (o namedList) write(f *formatter) {
 	}
 }
 
-type nodeSrc struct {
-	nodeName string
-	start    token.Pos
-	end      token.Pos
-}
+type nodeName string
 
-func (n *nodeSrc) name() string {
-	return n.nodeName
+func (nn nodeName) name() string { return string(nn) }
+
+type nodeSrc struct {
+	nodeName
+	start token.Pos
+	end   token.Pos
 }
 
 func (n *nodeSrc) write(f *formatter) {
@@ -59,16 +64,12 @@ func (n *nodeSrc) write(f *formatter) {
 }
 
 type typSrc struct {
-	typName string
+	nodeName
 	start   token.Pos
 	end     token.Pos
 	values  namedList
 	funcs   namedList
 	methods namedList
-}
-
-func (t *typSrc) name() string {
-	return t.typName
 }
 
 func (t *typSrc) write(f *formatter) {
@@ -80,11 +81,6 @@ func (t *typSrc) write(f *formatter) {
 	f.write("\n\n")
 	t.methods.write(f)
 	f.write("\n\n")
-}
-
-type namedSrc interface {
-	name() string
-	write(*formatter)
 }
 
 type organizer struct {
@@ -113,12 +109,12 @@ func (o *organizer) analyzeValue(v *ast.GenDecl, start, end token.Pos) {
 
 		typ, found := o.typIndex[typName]
 		if found {
-			typ.values = append(typ.values, &nodeSrc{nodeName: v.Tok.String(), start: start, end: end})
+			typ.values = append(typ.values, &nodeSrc{nodeName: nodeName(v.Tok.String()), start: start, end: end})
 			o.pos = end
 			return
 		}
 	}
-	o.values = append(o.values, &nodeSrc{nodeName: v.Tok.String(), start: start, end: end})
+	o.values = append(o.values, &nodeSrc{nodeName: nodeName(v.Tok.String()), start: start, end: end})
 }
 
 func (o *organizer) analyzeType(v *ast.GenDecl) {
@@ -135,9 +131,9 @@ func (o *organizer) analyzeType(v *ast.GenDecl) {
 
 	ts := v.Specs[0].(*ast.TypeSpec)
 	o.typIndex[ts.Name.Name] = &typSrc{
-		typName: ts.Name.Name,
-		start:   start,
-		end:     end,
+		nodeName: nodeName(ts.Name.Name),
+		start:    start,
+		end:      end,
 	}
 	o.typs = append(o.typs, o.typIndex[ts.Name.Name])
 }
@@ -154,19 +150,19 @@ func (o *organizer) analyzeFunc(v *ast.FuncDecl) {
 		if v.Type.Results != nil {
 			for _, result := range v.Type.Results.List {
 				if typ, found := o.typIndex[typStr(result.Type)]; found {
-					typ.funcs = append(typ.funcs, &nodeSrc{nodeName: v.Name.Name, start: start, end: end})
+					typ.funcs = append(typ.funcs, &nodeSrc{nodeName: nodeName(v.Name.Name), start: start, end: end})
 					return
 				}
 			}
 		}
 	} else { // method
 		if typ, found := o.typIndex[typStr(v.Recv.List[0].Type)]; found {
-			typ.methods = append(typ.methods, &nodeSrc{nodeName: v.Name.Name, start: start, end: end})
+			typ.methods = append(typ.methods, &nodeSrc{nodeName: nodeName(v.Name.Name), start: start, end: end})
 			return
 		}
 	}
 
-	o.funcs = append(o.funcs, &nodeSrc{nodeName: v.Name.Name, start: start, end: end})
+	o.funcs = append(o.funcs, &nodeSrc{nodeName: nodeName(v.Name.Name), start: start, end: end})
 }
 
 func (o *organizer) analyzeTypes() {
@@ -181,7 +177,6 @@ func (o *organizer) analyzeTypes() {
 
 func (o *organizer) organize() error {
 	o.analyzeTypes()
-	o.pos = o.files[o.currentFile].Pos()
 	for _, decl := range o.files[o.currentFile].Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
@@ -192,7 +187,6 @@ func (o *organizer) organize() error {
 				start = d.Doc.Pos()
 			}
 			end := d.End()
-			o.pos = end
 
 			if d.Tok == token.CONST || d.Tok == token.VAR {
 				o.analyzeValue(d, start, end)

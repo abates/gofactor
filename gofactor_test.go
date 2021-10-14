@@ -45,13 +45,14 @@ func TestGoFactor(t *testing.T) {
 			names := strings.Split(testname, "_")
 			if f, found := testFuncs[names[0]]; found {
 				gotBytes, err := f(inputfile, readFile(inputfile))
+				got := string(gotBytes)
 				if err != nil {
 					t.Errorf("Failed to execute %s: %v", names[0], err)
-				}
-
-				got := string(gotBytes)
-				if want != got {
-					t.Errorf("Wanted:\n%s\n\nGot:\n%s\n", want, got)
+					t.Errorf("Output:\n%s\n", got)
+				} else {
+					if want != got {
+						t.Errorf("Wanted:\n%s\n\nGot:\n%s\n", want, got)
+					}
 				}
 			} else {
 				t.Errorf("Unknown test function %q", names[0])

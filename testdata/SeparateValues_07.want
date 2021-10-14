@@ -1,0 +1,41 @@
+// Quisque vulputate pellentesque pretium. Vivamus efficitur condimentum
+// lorem at volutpat. Duis a tristique lorem. Nam tincidunt eu lectus
+// eget vulputate. Nullam id porta lorem. Aenean id posuere ligula.
+// Pellentesque massa libero, porta egestas ipsum vitae, aliquam sodales
+// ligula. Nullam sit amet quam vitae ex iaculis ultricies. Quisque
+// elementum egestas libero at varius. Sed efficitur commodo accumsan.
+// Etiam et enim magna. Duis ullamcorper varius sodales.
+
+package foo
+
+const (
+	MyConst1 MyType = iota
+	MyConst2
+	MyConst3
+	MyConst4
+)
+
+type MyType int
+
+var (
+	MyVar1 = MyType(1)
+	MyVar2 = MyType(2)
+	MyVar3 = MyType(3)
+	MyVar4 = MyType(4)
+)
+
+func New() MyType {
+	return MyType(1)
+}
+
+func Convert(i int) MyType {
+	return MyType(i)
+}
+
+func (mt *MyType) ThisAdd(other int) {
+	*mt = MyType(other) + *mt
+}
+
+func (mt MyType) Add(other int) int {
+	return int(mt) + other
+}

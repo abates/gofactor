@@ -1,0 +1,66 @@
+// Quisque vulputate pellentesque pretium. Vivamus efficitur condimentum 
+// lorem at volutpat. Duis a tristique lorem. Nam tincidunt eu lectus 
+// eget vulputate. Nullam id porta lorem. Aenean id posuere ligula.
+// Pellentesque massa libero, porta egestas ipsum vitae, aliquam sodales
+// ligula. Nullam sit amet quam vitae ex iaculis ultricies. Quisque 
+// elementum egestas libero at varius. Sed efficitur commodo accumsan.
+// Etiam et enim magna. Duis ullamcorper varius sodales.
+
+package foo
+
+const (
+	MyConst1 MyType = iota
+	MyConst2
+	MyConst3
+	MyConst4
+)
+
+// Nunc arcu odio, sollicitudin eu magna non, vehicula maximus felis. 
+// Aliquam nulla lacus, interdum vel rhoncus eget, aliquet non urna. 
+// Donec interdum leo in condimentum aliquet. Etiam placerat ex a diam 
+// rhoncus, non pretium dolor aliquam. Nam ac mollis turpis, quis 
+// condimentum orci. Quisque scelerisque justo semper maximus gravida.
+// Sed facilisis orci eu tortor ornare, in maximus leo volutpat. Integer
+// faucibus mauris non quam posuere, eu tempus nisl fringilla. Suspendisse
+// ut ullamcorper arcu, ac scelerisque justo. Etiam pretium rhoncus tempus.
+type MyType int
+
+// Aenean in ligula eget massa rutrum malesuada. Morbi et felis in felis 
+// aliquet imperdiet. Etiam lobortis aliquam lorem vel pellentesque. Proin 
+// consectetur sapien sed dui faucibus, nec vestibulum sem fermentum. 
+// Praesent rutrum augue faucibus iaculis consequat. Aliquam convallis 
+// libero mauris, a gravida augue blandit sit amet. Fusce justo urna, 
+// rutrum ullamcorper nisi id, feugiat convallis mauris. Donec aliquam 
+// volutpat augue, quis fringilla risus dictum ac.
+var (
+	MyVar1 = MyType(1)
+	MyVar2 = MyType(2)
+	MyVar3 = MyType(3)
+	MyVar4 = MyType(4)
+)
+
+// New is vivamus rhoncus semper congue. Curabitur vel ligula eu dui lacinia
+// feugiat ac efficitur mi. Vivamus elit augue, vulputate ac tellus quis, 
+// mollis aliquam nibh. Suspendisse urna lorem, maximus eu pellentesque 
+// sed, efficitur sed lectus. Ut at semper est. Quisque feugiat eu quam 
+// quis viverra. In hac habitasse platea dictumst. Proin et metus eleifend, 
+// scelerisque quam non, semper mauris. Duis hendrerit accumsan neque, non 
+// lacinia nunc placerat at. Ut a euismod lectus, a ultrices orci. Nam 
+// euismod libero eget ipsum rhoncus elementum. Proin eu justo aliquet,
+// scelerisque metus ac, viverra libero. Donec ac vestibulum orci, 
+// at placerat sapien.
+func New() MyType {
+	return MyType(1)
+}
+
+func Convert(i int) MyType {
+	return MyType(i)
+}
+
+func (mt *MyType) ThisAdd(other int) {
+	*mt = MyType(other) + *mt
+}
+
+func (mt MyType) Add(other int) int {
+	return int(mt) + other
+}

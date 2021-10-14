@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/format"
 	"go/token"
-	"log"
 )
 
 func SeparateValues(filename string, input []byte) ([]byte, error) {
@@ -19,7 +18,6 @@ func SeparateValues(filename string, input []byte) ([]byte, error) {
 	output, err := format.Source(cc.writer.Bytes())
 	if err != nil {
 		output = cc.writer.Bytes()
-		log.Printf("Unexpected formatting error: %v", err)
 	}
 	return output, err
 }
@@ -80,7 +78,7 @@ func (cc *valueCleaner) separateValDecl(decl *ast.GenDecl) {
 }
 
 func (cc *valueCleaner) separateValDecls() {
-	pos := cc.files[cc.currentFile].Pos()
+	pos := token.Pos(1)
 	for _, decl := range cc.files[cc.currentFile].Decls {
 		if d, ok := decl.(*ast.GenDecl); ok {
 			cc.writePos(pos, d.Pos())

@@ -61,7 +61,7 @@ func (f *formatter) parse(filename string, src []byte) error {
 func (f *formatter) readline(file string, start token.Pos) string {
 	i := strings.Index(string(f.src[file][start-1:]), "\n")
 	if i >= 0 {
-		return string(f.src[file][start-1 : i+1])
+		return string(f.src[file][start-1 : int(start)+i])
 	}
 	return ""
 }

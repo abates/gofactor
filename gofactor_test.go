@@ -9,9 +9,9 @@ import (
 )
 
 func TestGoFactor(t *testing.T) {
-	testFuncs := map[string]func([]byte) ([]byte, error){
+	testFuncs := map[string]func(string, []byte) ([]byte, error){
 		"SeparateValues": SeparateValues,
-		"OrganizeTypes":  OrganizeTypes,
+		"Organize":       Organize,
 	}
 
 	getFiles := func(files []string, err error) []string {
@@ -44,7 +44,7 @@ func TestGoFactor(t *testing.T) {
 			want := string(readFile(wantfile))
 			names := strings.Split(testname, "_")
 			if f, found := testFuncs[names[0]]; found {
-				gotBytes, err := f(readFile(inputfile))
+				gotBytes, err := f(inputfile, readFile(inputfile))
 				if err != nil {
 					t.Errorf("Failed to execute %s: %v", names[0], err)
 				}

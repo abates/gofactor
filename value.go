@@ -8,13 +8,13 @@ import (
 	"log"
 )
 
-func SeparateValues(input []byte) ([]byte, error) {
-	f, err := parse(input)
+func SeparateValues(filename string, input []byte) ([]byte, error) {
+	cc := &valueCleaner{formatter: newFormatter()}
+	err := cc.formatter.parse(filename, input)
 	if err != nil {
 		return nil, err
 	}
 
-	cc := &valueCleaner{formatter: f}
 	cc.separateValDecls()
 	output, err := format.Source(cc.writer.Bytes())
 	if err != nil {
@@ -80,8 +80,8 @@ func (cc *valueCleaner) separateValDecl(decl *ast.GenDecl) {
 }
 
 func (cc *valueCleaner) separateValDecls() {
-	pos := cc.f.Pos()
-	for _, decl := range cc.f.Decls {
+	pos := cc.files[cc.currentFile].Pos()
+	for _, decl := range cc.files[cc.currentFile].Decls {
 		if d, ok := decl.(*ast.GenDecl); ok {
 			cc.writePos(pos, d.Pos())
 			if d.Tok == token.CONST || d.Tok == token.VAR {
@@ -96,7 +96,7 @@ func (cc *valueCleaner) separateValDecls() {
 		}
 	}
 
-	if pos != cc.f.End() {
-		cc.writePos(pos, cc.f.End())
+	if pos != cc.files[cc.currentFile].End() {
+		cc.writePos(pos, cc.files[cc.currentFile].End())
 	}
 }

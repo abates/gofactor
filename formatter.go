@@ -3,7 +3,6 @@ package gofactor
 import (
 	"bytes"
 	"go/ast"
-	"go/importer"
 	"go/parser"
 	"go/token"
 	"go/types"
@@ -45,19 +44,6 @@ func (f *formatter) typeCheck(file *ast.File) error {
 		f.info = &pkg.Info
 		f.pkg = pkg.Pkg
 	}
-	return err
-}
-
-func (f *formatter) typeCheck1(filename string) (err error) {
-	f.info = &types.Info{
-		Types: make(map[ast.Expr]types.TypeAndValue),
-		Defs:  make(map[*ast.Ident]types.Object),
-		Uses:  make(map[*ast.Ident]types.Object),
-	}
-	var conf types.Config
-	conf.Importer = importer.Default()
-
-	f.pkg, err = conf.Check(filename, f.fset, []*ast.File{f.files[filename]}, f.info)
 	return err
 }
 

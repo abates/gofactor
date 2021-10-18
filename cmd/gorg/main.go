@@ -1,10 +1,13 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	"github.com/abates/gofactor"
 	"github.com/abates/gofactor/internal/diff"
@@ -22,6 +25,37 @@ func isDiff(a, b []byte) (bool, error) {
 	return len(d) == 0, err
 }
 
+func process(formatter *gofactor.Formatter, filenames []string) {
+	for _, filename := range filenames {
+		input, err := ioutil.ReadFile(filename)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to read %s: %v", filename, err)
+		}
+
+		output, err := formatter.Organize(filename)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to organize %q: %v\n", filename, err)
+			os.Exit(1)
+		}
+
+		if *write {
+			err = ioutil.WriteFile(filename, output, 0)
+		} else if *doDiff || *list {
+			if d, err := diff.Diff("", input, output); err != nil {
+				fmt.Fprintf(os.Stderr, "Couldn't perform diff on %s: %v", filename, err)
+			} else if len(d) > 0 {
+				if *list {
+					fmt.Fprintf(os.Stdout, "%s\n", filename)
+				} else {
+					fmt.Fprintf(os.Stdout, "%s\n%s", filename, string(d))
+				}
+			}
+		} else {
+			fmt.Fprintln(os.Stdout, string(output))
+		}
+	}
+}
+
 func main() {
 	flag.Usage = usage
 	flag.Parse()
@@ -32,35 +66,30 @@ func main() {
 		return
 	}
 
+	files := []string{}
+	formatter := gofactor.NewFormatter()
 	for _, arg := range args {
-		input, err := ioutil.ReadFile(arg)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to read file %q: %v\n", arg, err)
-			os.Exit(1)
-		}
-
-		output, err := gofactor.Organize(arg, input)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to organize %q: %v\n", arg, err)
-			os.Exit(1)
-		}
-
-		if *write {
-			err = ioutil.WriteFile(arg, output, 0)
-		} else if *doDiff || *list {
-			if d, err := diff.Diff("", input, output); err != nil {
-				fmt.Fprintf(os.Stderr, "Couldn't perform diff on %s: %v", arg, err)
-			} else if len(d) > 0 {
-				if *list {
-					fmt.Fprintf(os.Stdout, "%s\n", arg)
-				} else {
-					fmt.Fprintf(os.Stdout, "%s\n%s", arg, string(d))
+		if fi, err := os.Stat(arg); err == nil {
+			if fi.IsDir() {
+				err = formatter.AddDir(arg)
+				filenames, err := filepath.Glob(filepath.Join(arg, "*.go"))
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to read directory %s: %v", arg, err)
+					os.Exit(1)
 				}
+				files = append(files, filenames...)
+			} else {
+				err = formatter.AddDir(filepath.Dir(arg))
+				files = append(files, arg)
 			}
-		} else {
-			fmt.Fprintln(os.Stdout, string(output))
+
+			if err != nil && !errors.Is(err, fs.ErrExist) {
+				fmt.Fprintf(os.Stderr, "Failed to add directory: %v\n", err)
+				os.Exit(-1)
+			}
 		}
 	}
+	process(formatter, files)
 }
 
 func usage() {

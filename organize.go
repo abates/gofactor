@@ -3,37 +3,26 @@ package gofactor
 import (
 	"fmt"
 	"go/ast"
-	"go/format"
 	"go/token"
 	"sort"
 )
 
 func Organize(filename string, input []byte) (output []byte, err error) {
-	input, err = SeparateValues(filename, input)
-	if err != nil {
-		return input, err
-	}
-
-	o := &organizer{
-		formatter: newFormatter(),
-		typIndex:  make(map[string]*typSrc),
-	}
-	o.formatter.parse(filename, input)
-
-	err = o.organize()
+	formatter := NewFormatter()
+	err = formatter.AddFile(filename, input)
 	if err == nil {
-		output, err = format.Source(o.writer.Bytes())
-		if err != nil {
-			output = o.writer.Bytes()
-			err = fmt.Errorf("Unexpected formatting error: %w", err)
-		}
+		err = formatter.Load()
 	}
-	return output, err
+
+	if err == nil {
+		output, err = formatter.Organize(filename)
+	}
+	return
 }
 
 type namedSrc interface {
 	name() string
-	write(*formatter)
+	write(*fileFormatter)
 }
 
 type namedList []namedSrc
@@ -41,7 +30,7 @@ type namedList []namedSrc
 func (o namedList) Len() int           { return len(o) }
 func (o namedList) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 func (o namedList) Less(i, j int) bool { return o[i].name() < o[j].name() }
-func (o namedList) write(f *formatter) {
+func (o namedList) write(f *fileFormatter) {
 	sort.Sort(o)
 	for _, s := range o {
 		s.write(f)
@@ -58,7 +47,7 @@ type nodeSrc struct {
 	end   token.Pos
 }
 
-func (n *nodeSrc) write(f *formatter) {
+func (n *nodeSrc) write(f *fileFormatter) {
 	f.writePos(n.start, n.end)
 	f.write("\n\n")
 }
@@ -72,7 +61,7 @@ type typSrc struct {
 	methods namedList
 }
 
-func (t *typSrc) write(f *formatter) {
+func (t *typSrc) write(f *fileFormatter) {
 	f.writePos(t.start, t.end)
 	f.write("\n\n")
 	t.values.write(f)
@@ -84,7 +73,7 @@ func (t *typSrc) write(f *formatter) {
 }
 
 type organizer struct {
-	*formatter
+	*fileFormatter
 	pkg      token.Pos
 	imports  namedList
 	values   namedList
@@ -166,7 +155,7 @@ func (o *organizer) analyzeFunc(v *ast.FuncDecl) {
 }
 
 func (o *organizer) analyzeTypes() {
-	for _, decl := range o.files[o.currentFile].Decls {
+	for _, decl := range o.file.Decls {
 		if d, ok := decl.(*ast.GenDecl); ok {
 			if d.Tok == token.TYPE {
 				o.analyzeType(d)
@@ -177,7 +166,7 @@ func (o *organizer) analyzeTypes() {
 
 func (o *organizer) organize() error {
 	o.analyzeTypes()
-	for _, decl := range o.files[o.currentFile].Decls {
+	for _, decl := range o.file.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
 			o.analyzeFunc(d)
@@ -202,13 +191,13 @@ func (o *organizer) organize() error {
 		}
 	}
 
-	pkg := o.files[o.currentFile].Package
+	pkg := o.file.Package
 	o.writePos(1, pkg)
-	o.write(o.readline(o.currentFile, pkg))
-	o.imports.write(o.formatter)
-	o.values.write(o.formatter)
-	o.funcs.write(o.formatter)
-	o.typs.write(o.formatter)
+	o.write(o.readline(pkg))
+	o.imports.write(o.fileFormatter)
+	o.values.write(o.fileFormatter)
+	o.funcs.write(o.fileFormatter)
+	o.typs.write(o.fileFormatter)
 
 	return nil
 }

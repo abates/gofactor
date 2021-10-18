@@ -3,30 +3,27 @@ package gofactor
 import (
 	"fmt"
 	"go/ast"
-	"go/format"
 	"go/token"
 )
 
-func SeparateValues(filename string, input []byte) ([]byte, error) {
-	cc := &valueCleaner{formatter: newFormatter()}
-	err := cc.formatter.parse(filename, input)
-	if err != nil {
-		return nil, err
+func SeparateValues(filename string, input []byte) (output []byte, err error) {
+	formatter := NewFormatter()
+	err = formatter.AddFile(filename, input)
+	if err == nil {
+		err = formatter.Load()
 	}
 
-	cc.separateValDecls()
-	output, err := format.Source(cc.writer.Bytes())
-	if err != nil {
-		output = cc.writer.Bytes()
+	if err == nil {
+		output, err = formatter.SeparateValues(filename)
 	}
-	return output, err
+	return
 }
 
 type valueCleaner struct {
-	*formatter
+	*fileFormatter
 }
 
-func (cc *valueCleaner) separateValDecl(decl *ast.GenDecl) {
+func (vc *valueCleaner) separateValDecl(decl *ast.GenDecl) {
 	pos := decl.Pos()
 	// only refactor parenthesized decalarations
 	if decl.Lparen.IsValid() {
@@ -50,7 +47,7 @@ func (cc *valueCleaner) separateValDecl(decl *ast.GenDecl) {
 					}
 
 					// write out the previous spec
-					cc.writePos(pos, end)
+					vc.writePos(pos, end)
 
 					start := vs.Pos()
 					if vs.Doc != nil {
@@ -59,7 +56,7 @@ func (cc *valueCleaner) separateValDecl(decl *ast.GenDecl) {
 
 					// end the const block and start a new one
 					// with the next spec
-					cc.write(fmt.Sprintf("\n)\n\n%s (\n", decl.Tok))
+					vc.write(fmt.Sprintf("\n)\n\n%s (\n", decl.Tok))
 					lastType = typStr(vs.Type)
 					pos = start
 				}
@@ -68,33 +65,33 @@ func (cc *valueCleaner) separateValDecl(decl *ast.GenDecl) {
 		}
 
 		if pos != decl.Pos() {
-			cc.writePos(pos, decl.End())
+			vc.writePos(pos, decl.End())
 		}
 	}
 
 	if pos == decl.Pos() {
-		cc.writePos(decl.Pos(), decl.End())
+		vc.writePos(decl.Pos(), decl.End())
 	}
 }
 
-func (cc *valueCleaner) separateValDecls() {
+func (vc *valueCleaner) separateValDecls() {
 	pos := token.Pos(1)
-	for _, decl := range cc.files[cc.currentFile].Decls {
+	for _, decl := range vc.file.Decls {
 		if d, ok := decl.(*ast.GenDecl); ok {
-			cc.writePos(pos, d.Pos())
+			vc.writePos(pos, d.Pos())
 			if d.Tok == token.CONST || d.Tok == token.VAR {
-				cc.separateValDecl(d)
+				vc.separateValDecl(d)
 				pos = decl.End()
 			} else {
 				pos = decl.Pos()
 			}
 		} else {
-			cc.writePos(pos, decl.End())
+			vc.writePos(pos, decl.End())
 			pos = decl.End()
 		}
 	}
 
-	if pos != cc.files[cc.currentFile].End() {
-		cc.writePos(pos, cc.files[cc.currentFile].End())
+	if pos != vc.file.End() {
+		vc.writePos(pos, vc.file.End())
 	}
 }

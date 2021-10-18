@@ -20,21 +20,24 @@ func Organize(filename string, input []byte) (output []byte, err error) {
 	return
 }
 
-type namedSrc interface {
-	name() string
-	write(*fileFormatter)
-}
-
 type namedList []namedSrc
 
-func (o namedList) Len() int           { return len(o) }
-func (o namedList) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
+func (o namedList) Len() int { return len(o) }
+
 func (o namedList) Less(i, j int) bool { return o[i].name() < o[j].name() }
+
+func (o namedList) Swap(i, j int) { o[i], o[j] = o[j], o[i] }
+
 func (o namedList) write(f *fileFormatter) {
 	sort.Sort(o)
 	for _, s := range o {
 		s.write(f)
 	}
+}
+
+type namedSrc interface {
+	name() string
+	write(*fileFormatter)
 }
 
 type nodeName string
@@ -52,26 +55,6 @@ func (n *nodeSrc) write(f *fileFormatter) {
 	f.write("\n\n")
 }
 
-type typSrc struct {
-	nodeName
-	start   token.Pos
-	end     token.Pos
-	values  namedList
-	funcs   namedList
-	methods namedList
-}
-
-func (t *typSrc) write(f *fileFormatter) {
-	f.writePos(t.start, t.end)
-	f.write("\n\n")
-	t.values.write(f)
-	f.write("\n\n")
-	t.funcs.write(f)
-	f.write("\n\n")
-	t.methods.write(f)
-	f.write("\n\n")
-}
-
 type organizer struct {
 	*fileFormatter
 	pkg      token.Pos
@@ -81,50 +64,6 @@ type organizer struct {
 	typs     namedList
 	typIndex map[string]*typSrc
 	pos      token.Pos
-}
-
-func (o *organizer) analyzeValue(v *ast.GenDecl, start, end token.Pos) {
-	vs := v.Specs[0].(*ast.ValueSpec)
-
-	// only organize parenthesized blocks and
-	// single named values
-	if v.Lparen.IsValid() && len(vs.Names) == 1 {
-		typName := ""
-		if vs.Type == nil {
-			typName = o.typStr(vs.Values[0])
-		} else {
-			typName = typStr(vs.Type)
-		}
-
-		typ, found := o.typIndex[typName]
-		if found {
-			typ.values = append(typ.values, &nodeSrc{nodeName: nodeName(v.Tok.String()), start: start, end: end})
-			o.pos = end
-			return
-		}
-	}
-	o.values = append(o.values, &nodeSrc{nodeName: nodeName(v.Tok.String()), start: start, end: end})
-}
-
-func (o *organizer) analyzeType(v *ast.GenDecl) {
-	start := v.Pos()
-	if v.Doc != nil {
-		start = v.Doc.Pos()
-	}
-	end := v.End()
-
-	// only organize non-parenthesized types
-	if v.Lparen.IsValid() {
-		return
-	}
-
-	ts := v.Specs[0].(*ast.TypeSpec)
-	o.typIndex[ts.Name.Name] = &typSrc{
-		nodeName: nodeName(ts.Name.Name),
-		start:    start,
-		end:      end,
-	}
-	o.typs = append(o.typs, o.typIndex[ts.Name.Name])
 }
 
 func (o *organizer) analyzeFunc(v *ast.FuncDecl) {
@@ -154,6 +93,27 @@ func (o *organizer) analyzeFunc(v *ast.FuncDecl) {
 	o.funcs = append(o.funcs, &nodeSrc{nodeName: nodeName(v.Name.Name), start: start, end: end})
 }
 
+func (o *organizer) analyzeType(v *ast.GenDecl) {
+	start := v.Pos()
+	if v.Doc != nil {
+		start = v.Doc.Pos()
+	}
+	end := v.End()
+
+	// only organize non-parenthesized types
+	if v.Lparen.IsValid() {
+		return
+	}
+
+	ts := v.Specs[0].(*ast.TypeSpec)
+	o.typIndex[ts.Name.Name] = &typSrc{
+		nodeName: nodeName(ts.Name.Name),
+		start:    start,
+		end:      end,
+	}
+	o.typs = append(o.typs, o.typIndex[ts.Name.Name])
+}
+
 func (o *organizer) analyzeTypes() {
 	for _, decl := range o.file.Decls {
 		if d, ok := decl.(*ast.GenDecl); ok {
@@ -162,6 +122,29 @@ func (o *organizer) analyzeTypes() {
 			}
 		}
 	}
+}
+
+func (o *organizer) analyzeValue(v *ast.GenDecl, start, end token.Pos) {
+	vs := v.Specs[0].(*ast.ValueSpec)
+
+	// only organize parenthesized blocks and
+	// single named values
+	if v.Lparen.IsValid() && len(vs.Names) == 1 {
+		typName := ""
+		if vs.Type == nil {
+			typName = o.typStr(vs.Values[0])
+		} else {
+			typName = typStr(vs.Type)
+		}
+
+		typ, found := o.typIndex[typName]
+		if found {
+			typ.values = append(typ.values, &nodeSrc{nodeName: nodeName(v.Tok.String()), start: start, end: end})
+			o.pos = end
+			return
+		}
+	}
+	o.values = append(o.values, &nodeSrc{nodeName: nodeName(v.Tok.String()), start: start, end: end})
 }
 
 func (o *organizer) organize() error {
@@ -200,4 +183,24 @@ func (o *organizer) organize() error {
 	o.typs.write(o.fileFormatter)
 
 	return nil
+}
+
+type typSrc struct {
+	nodeName
+	start   token.Pos
+	end     token.Pos
+	values  namedList
+	funcs   namedList
+	methods namedList
+}
+
+func (t *typSrc) write(f *fileFormatter) {
+	f.writePos(t.start, t.end)
+	f.write("\n\n")
+	t.values.write(f)
+	f.write("\n\n")
+	t.funcs.write(f)
+	f.write("\n\n")
+	t.methods.write(f)
+	f.write("\n\n")
 }

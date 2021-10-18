@@ -16,6 +16,20 @@ import (
 	"golang.org/x/tools/go/loader"
 )
 
+func typStr(expr ast.Expr) (str string) {
+	if expr == nil {
+		return ""
+	}
+
+	switch t := expr.(type) {
+	case *ast.Ident:
+		str = t.Name
+	case *ast.StarExpr:
+		str = typStr(t.X)
+	}
+	return str
+}
+
 type Formatter struct {
 	path    string
 	files   map[string]*ast.File
@@ -59,20 +73,6 @@ func (f *Formatter) AddFile(filename string, src []byte) error {
 	return f.addFile(filename, src)
 }
 
-func (f *Formatter) addFile(filename string, src []byte) error {
-	err := f.parse(filename, src)
-	if err == nil {
-		astFile := f.files[filename]
-		pkgname := astFile.Name.Name
-		if f.pkgname == "" {
-			f.pkgname = pkgname
-		} else if f.pkgname != pkgname {
-			return fmt.Errorf("Found package %s and %s", f.pkgname, pkgname)
-		}
-	}
-	return err
-}
-
 func (f *Formatter) Load() error {
 	fset := token.NewFileSet()
 	files := []*ast.File{}
@@ -90,24 +90,6 @@ func (f *Formatter) Load() error {
 		f.pkg = pkg.Pkg
 	}
 	return err
-}
-
-func (f *Formatter) parse(filename string, src []byte) error {
-	astFile, err := parser.ParseFile(token.NewFileSet(), filename, src, parser.ParseComments)
-	if err == nil {
-		f.files[filename] = astFile
-		f.sources[filename] = src
-	}
-	return err
-}
-
-func (f *Formatter) typStr(expr ast.Expr) (str string) {
-	if expr == nil {
-		return ""
-	}
-
-	name := types.TypeString(f.info.TypeOf(expr), types.RelativeTo(f.pkg))
-	return name
 }
 
 func (f *Formatter) Organize(filename string) (output []byte, err error) {
@@ -133,17 +115,6 @@ func (f *Formatter) Organize(filename string) (output []byte, err error) {
 	return
 }
 
-func (f *Formatter) setSrc(filename string, src []byte) (output []byte, err error) {
-	if output, err = format.Source(src); err == nil {
-		if err = f.addFile(filename, output); err == nil {
-			err = f.Load()
-		}
-	} else {
-		output = src
-	}
-	return output, err
-}
-
 func (f *Formatter) SeparateValues(filename string) ([]byte, error) {
 	file, found := f.files[filename]
 	if !found {
@@ -163,18 +134,47 @@ func (f *Formatter) SeparateValues(filename string) ([]byte, error) {
 	return f.setSrc(filename, vf.writer.Bytes())
 }
 
-func typStr(expr ast.Expr) (str string) {
+func (f *Formatter) addFile(filename string, src []byte) error {
+	err := f.parse(filename, src)
+	if err == nil {
+		astFile := f.files[filename]
+		pkgname := astFile.Name.Name
+		if f.pkgname == "" {
+			f.pkgname = pkgname
+		} else if f.pkgname != pkgname {
+			return fmt.Errorf("Found package %s and %s", f.pkgname, pkgname)
+		}
+	}
+	return err
+}
+
+func (f *Formatter) parse(filename string, src []byte) error {
+	astFile, err := parser.ParseFile(token.NewFileSet(), filename, src, parser.ParseComments)
+	if err == nil {
+		f.files[filename] = astFile
+		f.sources[filename] = src
+	}
+	return err
+}
+
+func (f *Formatter) setSrc(filename string, src []byte) (output []byte, err error) {
+	if output, err = format.Source(src); err == nil {
+		if err = f.addFile(filename, output); err == nil {
+			err = f.Load()
+		}
+	} else {
+		output = src
+	}
+	return output, err
+}
+
+func (f *Formatter) typStr(expr ast.Expr) (str string) {
 	if expr == nil {
 		return ""
 	}
 
-	switch t := expr.(type) {
-	case *ast.Ident:
-		str = t.Name
-	case *ast.StarExpr:
-		str = typStr(t.X)
-	}
-	return str
+	name := types.TypeString(f.info.TypeOf(expr), types.RelativeTo(f.pkg))
+	return name
 }
 
 type fileFormatter struct {
@@ -185,6 +185,14 @@ type fileFormatter struct {
 	writer *bytes.Buffer
 }
 
+func (f *fileFormatter) readline(start token.Pos) string {
+	i := strings.Index(string(f.src[start-1:]), "\n")
+	if i >= 0 {
+		return string(f.src[start-1 : int(start)+i])
+	}
+	return ""
+}
+
 func (f *fileFormatter) write(str string) {
 	//println("Writing:", str)
 	f.writer.Write([]byte(str))
@@ -193,12 +201,4 @@ func (f *fileFormatter) write(str string) {
 func (f *fileFormatter) writePos(start, end token.Pos) {
 	//println("Writing:", string(f.src[start-1:end-1]))
 	f.writer.Write(f.src[start-1 : end-1])
-}
-
-func (f *fileFormatter) readline(start token.Pos) string {
-	i := strings.Index(string(f.src[start-1:]), "\n")
-	if i >= 0 {
-		return string(f.src[start-1 : int(start)+i])
-	}
-	return ""
 }

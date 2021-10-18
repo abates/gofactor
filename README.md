@@ -1,2 +1,2 @@
-# gofactor
-Tools for refactoring go code
+# Go Tools
+Tools for refactoring go source code

@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+cmd/gorg/gorg
 
 # Test binary, built with `go test -c`
 *.test

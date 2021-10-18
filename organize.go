@@ -1,4 +1,4 @@
-package gofactor
+package tools
 
 import (
 	"fmt"
@@ -9,14 +9,14 @@ import (
 )
 
 func Organize(filename string, input []byte) (output []byte, err error) {
-	formatter := NewFormatter()
-	err = formatter.AddFile(filename, input)
+	tools := New()
+	err = tools.AddFile(filename, input)
 	if err == nil {
-		err = formatter.Load()
+		err = tools.Load()
 	}
 
 	if err == nil {
-		output, err = formatter.Organize(filename)
+		output, err = tools.Organize(filename)
 	}
 	return
 }
@@ -35,7 +35,7 @@ func (o namedList) Less(i, j int) bool {
 
 func (o namedList) Swap(i, j int) { o[i], o[j] = o[j], o[i] }
 
-func (o namedList) write(f *fileFormatter) {
+func (o namedList) write(f *formatter) {
 	sort.Sort(o)
 	for _, s := range o {
 		s.write(f)
@@ -44,7 +44,7 @@ func (o namedList) write(f *fileFormatter) {
 
 type namedSrc interface {
 	name() string
-	write(*fileFormatter)
+	write(*formatter)
 }
 
 type nodeName string
@@ -57,13 +57,13 @@ type nodeSrc struct {
 	end   token.Pos
 }
 
-func (n *nodeSrc) write(f *fileFormatter) {
+func (n *nodeSrc) write(f *formatter) {
 	f.writePos(n.start, n.end)
 	f.write("\n\n")
 }
 
 type organizer struct {
-	*fileFormatter
+	*formatter
 	pkg      token.Pos
 	imports  namedList
 	values   namedList
@@ -184,10 +184,10 @@ func (o *organizer) organize() error {
 	pkg := o.file.Package
 	o.writePos(1, pkg)
 	o.write(o.readline(pkg))
-	o.imports.write(o.fileFormatter)
-	o.values.write(o.fileFormatter)
-	o.funcs.write(o.fileFormatter)
-	o.typs.write(o.fileFormatter)
+	o.imports.write(o.formatter)
+	o.values.write(o.formatter)
+	o.funcs.write(o.formatter)
+	o.typs.write(o.formatter)
 
 	return nil
 }
@@ -201,7 +201,7 @@ type typSrc struct {
 	methods namedList
 }
 
-func (t *typSrc) write(f *fileFormatter) {
+func (t *typSrc) write(f *formatter) {
 	f.writePos(t.start, t.end)
 	f.write("\n\n")
 	t.values.write(f)

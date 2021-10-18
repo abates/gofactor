@@ -1,4 +1,4 @@
-module github.com/abates/gofactor
+module github.com/abates/gotools
 
 go 1.17
 

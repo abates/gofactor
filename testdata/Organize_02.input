@@ -1,6 +1,6 @@
 package main
 
-import "github.com/abates/gofactor"
+import "github.com/abates/gotools"
 
 var prgrm = []byte(`
 package foo
@@ -38,7 +38,7 @@ func (mt MyType) Add(other int) int {
 }`)
 
 func main() {
-  _, err := gofactor.Organize("", prgrm)
+  _, err := tools.Organize("", prgrm)
   if err != nil {
     println("ERROR:", err.Error())
   }

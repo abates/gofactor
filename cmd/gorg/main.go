@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/abates/gofactor"
-	"github.com/abates/gofactor/internal/diff"
+	tools "github.com/abates/gotools"
+	"github.com/abates/gotools/internal/diff"
 )
 
 var (
@@ -25,14 +25,14 @@ func isDiff(a, b []byte) (bool, error) {
 	return len(d) == 0, err
 }
 
-func process(formatter *gofactor.Formatter, filenames []string) {
+func process(tools *tools.Tools, filenames []string) {
 	for _, filename := range filenames {
 		input, err := ioutil.ReadFile(filename)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to read %s: %v", filename, err)
 		}
 
-		output, err := formatter.Organize(filename)
+		output, err := tools.Organize(filename)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to organize %q: %v\n", filename, err)
 			os.Exit(1)
@@ -67,11 +67,11 @@ func main() {
 	}
 
 	files := []string{}
-	formatter := gofactor.NewFormatter()
+	tools := tools.New()
 	for _, arg := range args {
 		if fi, err := os.Stat(arg); err == nil {
 			if fi.IsDir() {
-				err = formatter.AddDir(arg)
+				err = tools.AddDir(arg)
 				filenames, err := filepath.Glob(filepath.Join(arg, "*.go"))
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to read directory %s: %v", arg, err)
@@ -79,7 +79,7 @@ func main() {
 				}
 				files = append(files, filenames...)
 			} else {
-				err = formatter.AddDir(filepath.Dir(arg))
+				err = tools.AddDir(filepath.Dir(arg))
 				files = append(files, arg)
 			}
 
@@ -89,7 +89,7 @@ func main() {
 			}
 		}
 	}
-	process(formatter, files)
+	process(tools, files)
 }
 
 func usage() {

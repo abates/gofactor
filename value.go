@@ -1,4 +1,4 @@
-package gofactor
+package tools
 
 import (
 	"fmt"
@@ -7,20 +7,20 @@ import (
 )
 
 func SeparateValues(filename string, input []byte) (output []byte, err error) {
-	formatter := NewFormatter()
-	err = formatter.AddFile(filename, input)
+	tools := New()
+	err = tools.AddFile(filename, input)
 	if err == nil {
-		err = formatter.Load()
+		err = tools.Load()
 	}
 
 	if err == nil {
-		output, err = formatter.SeparateValues(filename)
+		output, err = tools.SeparateValues(filename)
 	}
 	return
 }
 
 type valueCleaner struct {
-	*fileFormatter
+	*formatter
 }
 
 func (vc *valueCleaner) separateValDecl(decl *ast.GenDecl) {

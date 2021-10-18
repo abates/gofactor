@@ -1,4 +1,4 @@
-package gofactor
+package tools
 
 import (
 	"io/ioutil"

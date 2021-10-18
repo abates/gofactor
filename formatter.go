@@ -30,6 +30,32 @@ func typStr(expr ast.Expr) (str string) {
 	return str
 }
 
+type fileFormatter struct {
+	*Formatter
+
+	file   *ast.File
+	src    []byte
+	writer *bytes.Buffer
+}
+
+func (f *fileFormatter) readline(start token.Pos) string {
+	i := strings.Index(string(f.src[start-1:]), "\n")
+	if i >= 0 {
+		return string(f.src[start-1 : int(start)+i])
+	}
+	return ""
+}
+
+func (f *fileFormatter) write(str string) {
+	//println("Writing:", str)
+	f.writer.Write([]byte(str))
+}
+
+func (f *fileFormatter) writePos(start, end token.Pos) {
+	//println("Writing:", string(f.src[start-1:end-1]))
+	f.writer.Write(f.src[start-1 : end-1])
+}
+
 type Formatter struct {
 	path    string
 	files   map[string]*ast.File
@@ -71,6 +97,20 @@ func (f *Formatter) AddFile(filename string, src []byte) error {
 		return fs.ErrExist
 	}
 	return f.addFile(filename, src)
+}
+
+func (f *Formatter) addFile(filename string, src []byte) error {
+	err := f.parse(filename, src)
+	if err == nil {
+		astFile := f.files[filename]
+		pkgname := astFile.Name.Name
+		if f.pkgname == "" {
+			f.pkgname = pkgname
+		} else if f.pkgname != pkgname {
+			return fmt.Errorf("Found package %s and %s", f.pkgname, pkgname)
+		}
+	}
+	return err
 }
 
 func (f *Formatter) Load() error {
@@ -115,6 +155,15 @@ func (f *Formatter) Organize(filename string) (output []byte, err error) {
 	return
 }
 
+func (f *Formatter) parse(filename string, src []byte) error {
+	astFile, err := parser.ParseFile(token.NewFileSet(), filename, src, parser.ParseComments)
+	if err == nil {
+		f.files[filename] = astFile
+		f.sources[filename] = src
+	}
+	return err
+}
+
 func (f *Formatter) SeparateValues(filename string) ([]byte, error) {
 	file, found := f.files[filename]
 	if !found {
@@ -132,29 +181,6 @@ func (f *Formatter) SeparateValues(filename string) ([]byte, error) {
 
 	vf.separateValDecls()
 	return f.setSrc(filename, vf.writer.Bytes())
-}
-
-func (f *Formatter) addFile(filename string, src []byte) error {
-	err := f.parse(filename, src)
-	if err == nil {
-		astFile := f.files[filename]
-		pkgname := astFile.Name.Name
-		if f.pkgname == "" {
-			f.pkgname = pkgname
-		} else if f.pkgname != pkgname {
-			return fmt.Errorf("Found package %s and %s", f.pkgname, pkgname)
-		}
-	}
-	return err
-}
-
-func (f *Formatter) parse(filename string, src []byte) error {
-	astFile, err := parser.ParseFile(token.NewFileSet(), filename, src, parser.ParseComments)
-	if err == nil {
-		f.files[filename] = astFile
-		f.sources[filename] = src
-	}
-	return err
 }
 
 func (f *Formatter) setSrc(filename string, src []byte) (output []byte, err error) {
@@ -175,30 +201,4 @@ func (f *Formatter) typStr(expr ast.Expr) (str string) {
 
 	name := types.TypeString(f.info.TypeOf(expr), types.RelativeTo(f.pkg))
 	return name
-}
-
-type fileFormatter struct {
-	*Formatter
-
-	file   *ast.File
-	src    []byte
-	writer *bytes.Buffer
-}
-
-func (f *fileFormatter) readline(start token.Pos) string {
-	i := strings.Index(string(f.src[start-1:]), "\n")
-	if i >= 0 {
-		return string(f.src[start-1 : int(start)+i])
-	}
-	return ""
-}
-
-func (f *fileFormatter) write(str string) {
-	//println("Writing:", str)
-	f.writer.Write([]byte(str))
-}
-
-func (f *fileFormatter) writePos(start, end token.Pos) {
-	//println("Writing:", string(f.src[start-1:end-1]))
-	f.writer.Write(f.src[start-1 : end-1])
 }

@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	"sort"
+	"strings"
 )
 
 func Organize(filename string, input []byte) (output []byte, err error) {
@@ -24,7 +25,13 @@ type namedList []namedSrc
 
 func (o namedList) Len() int { return len(o) }
 
-func (o namedList) Less(i, j int) bool { return o[i].name() < o[j].name() }
+func (o namedList) Less(i, j int) bool {
+	oi, oj := strings.ToLower(o[i].name()), strings.ToLower(o[j].name())
+	if oi == oj {
+		return o[i].name() < o[j].name()
+	}
+	return oi < oj
+}
 
 func (o namedList) Swap(i, j int) { o[i], o[j] = o[j], o[i] }
 

@@ -113,10 +113,11 @@ func (f *Tools) Organize(filename string) (output []byte, err error) {
 
 	o := &organizer{
 		formatter: &formatter{
-			Tools:  f,
-			file:   f.files[filename],
-			src:    f.sources[filename],
-			writer: bytes.NewBuffer(nil),
+			Tools:    f,
+			filename: filename,
+			file:     f.files[filename],
+			src:      f.sources[filename],
+			writer:   bytes.NewBuffer(nil),
 		},
 		typIndex: make(map[string]*typSrc),
 	}
@@ -145,10 +146,11 @@ func (f *Tools) SeparateValues(filename string) ([]byte, error) {
 
 	vf := &valueCleaner{
 		formatter: &formatter{
-			Tools:  f,
-			file:   file,
-			src:    f.sources[filename],
-			writer: bytes.NewBuffer(nil),
+			Tools:    f,
+			filename: filename,
+			file:     file,
+			src:      f.sources[filename],
+			writer:   bytes.NewBuffer(nil),
 		},
 	}
 

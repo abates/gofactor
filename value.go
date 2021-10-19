@@ -56,7 +56,7 @@ func (vc *valueCleaner) separateValDecl(decl *ast.GenDecl) {
 
 					// end the const block and start a new one
 					// with the next spec
-					vc.write(fmt.Sprintf("\n)\n\n%s (\n", decl.Tok))
+					vc.writeStr(fmt.Sprintf("\n)\n\n%s (\n", decl.Tok))
 					lastType = typStr(vs.Type)
 					pos = start
 				}

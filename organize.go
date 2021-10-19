@@ -59,7 +59,7 @@ type nodeSrc struct {
 
 func (n *nodeSrc) write(f *formatter) {
 	f.writePos(n.start, n.end)
-	f.write("\n\n")
+	f.writeStr("\n\n")
 }
 
 type organizer struct {
@@ -183,7 +183,7 @@ func (o *organizer) organize() error {
 
 	pkg := o.file.Package
 	o.writePos(1, pkg)
-	o.write(o.readline(pkg))
+	o.writeStr(o.readline(pkg))
 	o.imports.write(o.formatter)
 	o.values.write(o.formatter)
 	o.funcs.write(o.formatter)
@@ -203,11 +203,11 @@ type typSrc struct {
 
 func (t *typSrc) write(f *formatter) {
 	f.writePos(t.start, t.end)
-	f.write("\n\n")
+	f.writeStr("\n\n")
 	t.values.write(f)
-	f.write("\n\n")
+	f.writeStr("\n\n")
 	t.funcs.write(f)
-	f.write("\n\n")
+	f.writeStr("\n\n")
 	t.methods.write(f)
-	f.write("\n\n")
+	f.writeStr("\n\n")
 }

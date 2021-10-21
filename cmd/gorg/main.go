@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,8 +44,7 @@ func main() {
 			}
 
 			if _, found := added[arg]; !found {
-				dir := os.DirFS(arg)
-				err = tools.AddDir(dir, ".")
+				err = tools.AddDir(arg)
 				added[arg] = true
 			}
 
@@ -70,7 +70,10 @@ func main() {
 				}
 			}
 		} else if *write {
-			//err = tools.WriteFiles()
+			wf := func(name string, content []byte) error {
+				return ioutil.WriteFile(name, content, 0)
+			}
+			err = tools.WriteFiles(wf)
 		}
 	}
 

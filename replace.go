@@ -27,10 +27,6 @@ type Replacer struct {
 	Err      error
 }
 
-func (r *Replacer) Content() []byte {
-	return (r.src)
-}
-
 func Replace(filename string, src []byte) (r *Replacer) {
 	r = &Replacer{
 		formatter: &formatter{
@@ -41,6 +37,19 @@ func Replace(filename string, src []byte) (r *Replacer) {
 	}
 
 	r.file, r.Err = parser.ParseFile(token.NewFileSet(), filename, src, parser.ParseComments)
+	return r
+}
+
+func (r *Replacer) Content() []byte {
+	return (r.src)
+}
+
+func (r *Replacer) Func(name, receiver string, content []byte) *Replacer {
+	if r.Err == nil {
+		var decl *ast.FuncDecl
+		decl, r.Err = FindFunc(r.file, name, receiver)
+		r.Pos(decl.Pos(), decl.End(), content)
+	}
 	return r
 }
 
@@ -57,15 +66,6 @@ func (r *Replacer) Pos(start, end token.Pos, content []byte) *Replacer {
 		} else {
 			r.src = r.writer.Bytes()
 		}
-	}
-	return r
-}
-
-func (r *Replacer) Func(name, receiver string, content []byte) *Replacer {
-	if r.Err == nil {
-		var decl *ast.FuncDecl
-		decl, r.Err = FindFunc(r.file, name, receiver)
-		r.Pos(decl.Pos(), decl.End(), content)
 	}
 	return r
 }

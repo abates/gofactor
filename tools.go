@@ -9,7 +9,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
-	"path"
+	"io/ioutil"
 	"path/filepath"
 )
 
@@ -45,6 +45,8 @@ type Change struct {
 	Current  []byte
 }
 
+type FileWriter func(filename string, data []byte) error
+
 type Tools struct {
 	changed map[string]Change
 	files   map[string]*ast.File
@@ -61,35 +63,6 @@ func New() *Tools {
 	return f
 }
 
-// AddDir will add all the *.go files in the given directory
-// to the local file set.  Each file will be parsed.  If any
-// parsing errors occur processing stops and the associated
-// error is returned
-func (f *Tools) AddDir(fsys fs.FS, dir string) error {
-	files, err := fs.Glob(fsys, path.Join(filepath.ToSlash(dir), "*.go"))
-	if err == nil {
-		err = f.AddFiles(fsys, files...)
-	}
-	return err
-}
-
-// AddFiles will add all the files supplied
-func (f *Tools) AddFiles(fsys fs.FS, files ...string) (err error) {
-	for i := 0; i < len(files) && err == nil; i++ {
-		err = f.AddFile(fsys, files[i])
-	}
-	return
-}
-
-// AddFile will read the file and add it to the local fileset
-func (f *Tools) AddFile(fsys fs.FS, filename string) error {
-	src, err := fs.ReadFile(fsys, filename)
-	if err == nil {
-		err = f.Add(filename, src)
-	}
-	return err
-}
-
 // Add will attempt to add the given source to the file set
 // and parse the content. If the filename already exists in the
 // file set then fs.ErrExist is returned. Otherwise any parse
@@ -99,6 +72,27 @@ func (f *Tools) Add(filename string, src []byte) error {
 		return fs.ErrExist
 	}
 	return f.addFile(filename, src)
+}
+
+// AddDir will add all the *.go files in the given directory
+// to the local file set.  Each file will be parsed.  If any
+// parsing errors occur processing stops and the associated
+// error is returned
+func (f *Tools) AddDir(dir string) error {
+	files, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err == nil {
+		err = f.AddFiles(files...)
+	}
+	return err
+}
+
+// AddFile will read the file and add it to the local fileset
+func (f *Tools) AddFile(filename string) error {
+	src, err := ioutil.ReadFile(filename)
+	if err == nil {
+		err = f.Add(filename, src)
+	}
+	return err
 }
 
 func (f *Tools) addFile(filename string, src []byte) error {
@@ -124,22 +118,28 @@ func (f *Tools) addFile(filename string, src []byte) error {
 	return err
 }
 
-func (f *Tools) OrganizeAll() (err error) {
-	filenames := []string{}
-	for filename := range f.files {
-		filenames = append(filenames, filename)
-	}
-	return f.OrganizeFiles(filenames...)
-}
-
-func (f *Tools) OrganizeFiles(files ...string) (err error) {
-	for _, filename := range files {
-		_, err = f.Organize(filename)
-		if err != nil {
-			break
-		}
+// AddFiles will add all the files supplied
+func (f *Tools) AddFiles(files ...string) (err error) {
+	for i := 0; i < len(files) && err == nil; i++ {
+		err = f.AddFile(files[i])
 	}
 	return
+}
+
+func (f *Tools) Changed() (changed []Change) {
+	for _, change := range f.changed {
+		changed = append(changed, change)
+	}
+	return changed
+}
+
+// ChangedFiles returns a list of filenames whose content has
+// changed during the course of processing
+func (f *Tools) ChangedFiles() (changed []string) {
+	for filename := range f.changed {
+		changed = append(changed, filename)
+	}
+	return changed
 }
 
 func (f *Tools) Organize(filename string) (output []byte, err error) {
@@ -161,6 +161,24 @@ func (f *Tools) Organize(filename string) (output []byte, err error) {
 	err = o.organize()
 	if err == nil {
 		output, err = f.setSrc(filename, o.writer.Bytes())
+	}
+	return
+}
+
+func (f *Tools) OrganizeAll() (err error) {
+	filenames := []string{}
+	for filename := range f.files {
+		filenames = append(filenames, filename)
+	}
+	return f.OrganizeFiles(filenames...)
+}
+
+func (f *Tools) OrganizeFiles(files ...string) (err error) {
+	for _, filename := range files {
+		_, err = f.Organize(filename)
+		if err != nil {
+			break
+		}
 	}
 	return
 }
@@ -230,33 +248,6 @@ func (f *Tools) setSrc(filename string, src []byte) (output []byte, err error) {
 		output = src
 	}
 	return output, err
-}
-
-/*func (f *Tools) typStr(expr ast.Expr) (str string) {
-	if expr == nil {
-		return ""
-	}
-
-	name := types.TypeString(f.info.TypeOf(expr), types.RelativeTo(f.pkg))
-	return name
-}*/
-
-type FileWriter func(filename string, data []byte) error
-
-// ChangedFiles returns a list of filenames whose content has
-// changed during the course of processing
-func (f *Tools) ChangedFiles() (changed []string) {
-	for filename := range f.changed {
-		changed = append(changed, filename)
-	}
-	return changed
-}
-
-func (f *Tools) Changed() (changed []Change) {
-	for _, change := range f.changed {
-		changed = append(changed, change)
-	}
-	return changed
 }
 
 // WriteFiles will write all the changed files using the supplied

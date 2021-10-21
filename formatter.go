@@ -23,10 +23,6 @@ func (f *formatter) readline(start token.Pos) (line string) {
 	return line
 }
 
-func (f *formatter) writeStr(str string) {
-	f.write([]byte(str))
-}
-
 func (f *formatter) write(content []byte) {
 	//println("Writing:", str)
 	f.writer.Write(content)
@@ -38,4 +34,8 @@ func (f *formatter) writePos(start, end token.Pos) {
 		end = f.file.End()
 	}
 	f.writer.Write(f.src[start-1 : end-1])
+}
+
+func (f *formatter) writeStr(str string) {
+	f.write([]byte(str))
 }

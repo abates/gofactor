@@ -10,7 +10,7 @@ import (
 
 func Organize(filename string, input []byte) (output []byte, err error) {
 	tools := New()
-	err = tools.AddFile(filename, input)
+	err = tools.Add(filename, input)
 	if err == nil {
 		err = tools.Load()
 	}

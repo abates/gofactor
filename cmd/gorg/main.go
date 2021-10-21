@@ -1,13 +1,11 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
-	"io/fs"
-	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 
 	tools "github.com/abates/gotools"
 	"github.com/abates/gotools/internal/diff"
@@ -20,42 +18,6 @@ var (
 	doDiff = flag.Bool("d", false, "display diffs instead of rewriting files")
 )
 
-func isDiff(a, b []byte) (bool, error) {
-	d, err := diff.Diff("", a, b)
-	return len(d) == 0, err
-}
-
-func process(tools *tools.Tools, filenames []string) {
-	for _, filename := range filenames {
-		input, err := ioutil.ReadFile(filename)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to read %s: %v", filename, err)
-		}
-
-		output, err := tools.Organize(filename)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to organize %q: %v\n", filename, err)
-			os.Exit(1)
-		}
-
-		if *write {
-			err = ioutil.WriteFile(filename, output, 0)
-		} else if *doDiff || *list {
-			if d, err := diff.Diff("", input, output); err != nil {
-				fmt.Fprintf(os.Stderr, "Couldn't perform diff on %s: %v", filename, err)
-			} else if len(d) > 0 {
-				if *list {
-					fmt.Fprintf(os.Stdout, "%s\n", filename)
-				} else {
-					fmt.Fprintf(os.Stdout, "%s\n%s", filename, string(d))
-				}
-			}
-		} else {
-			fmt.Fprintln(os.Stdout, string(output))
-		}
-	}
-}
-
 func main() {
 	flag.Usage = usage
 	flag.Parse()
@@ -66,30 +28,56 @@ func main() {
 		return
 	}
 
+	added := map[string]bool{}
 	files := []string{}
 	tools := tools.New()
+
 	for _, arg := range args {
 		if fi, err := os.Stat(arg); err == nil {
 			if fi.IsDir() {
-				err = tools.AddDir(arg)
-				filenames, err := filepath.Glob(filepath.Join(arg, "*.go"))
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Failed to read directory %s: %v", arg, err)
-					os.Exit(1)
-				}
-				files = append(files, filenames...)
+				f, _ := filepath.Glob(filepath.Join(arg, "*.go"))
+				files = append(files, f...)
 			} else {
-				err = tools.AddDir(filepath.Dir(arg))
 				files = append(files, arg)
+				arg = filepath.Dir(arg)
 			}
 
-			if err != nil && !errors.Is(err, fs.ErrExist) {
-				fmt.Fprintf(os.Stderr, "Failed to add directory: %v\n", err)
+			if _, found := added[arg]; !found {
+				dir := os.DirFS(arg)
+				err = tools.AddDir(dir, ".")
+				added[arg] = true
+			}
+
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to add %q: %v\n", arg, err)
 				os.Exit(-1)
 			}
+		} else {
+			fmt.Fprintf(os.Stderr, "Failed to stat %s: %v\n", arg, err)
 		}
 	}
-	process(tools, files)
+
+	err := tools.OrganizeFiles(files...)
+	if err == nil {
+		if *list {
+			fmt.Fprintln(os.Stderr, strings.Join(tools.ChangedFiles(), "\n"))
+		} else if *doDiff {
+			for _, change := range tools.Changed() {
+				if d, err := diff.Diff("", change.Orig, change.Current); err != nil {
+					fmt.Fprintf(os.Stderr, "Couldn't perform diff on %s: %v", change.Filename, err)
+				} else if len(d) > 0 {
+					fmt.Fprintf(os.Stdout, "%s\n%s", change.Filename, string(d))
+				}
+			}
+		} else if *write {
+			//err = tools.WriteFiles()
+		}
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to organize: %v", err)
+		os.Exit(-1)
+	}
 }
 
 func usage() {

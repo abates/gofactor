@@ -10,18 +10,17 @@ import (
 type formatter struct {
 	*Tools
 
-	filename string
-	file     *ast.File
-	src      []byte
-	writer   *bytes.Buffer
+	file   *ast.File
+	src    []byte
+	writer *bytes.Buffer
 }
 
-func (f *formatter) readline(start token.Pos) string {
+func (f *formatter) readline(start token.Pos) (line string) {
 	i := strings.Index(string(f.src[start-1:]), "\n")
 	if i >= 0 {
-		return string(f.src[start-1 : int(start)+i])
+		line = string(f.src[start-1 : int(start)+i])
 	}
-	return ""
+	return line
 }
 
 func (f *formatter) writeStr(str string) {
@@ -39,9 +38,4 @@ func (f *formatter) writePos(start, end token.Pos) {
 		end = f.file.End()
 	}
 	f.writer.Write(f.src[start-1 : end-1])
-}
-
-func (f *formatter) reload() error {
-	_, err := f.setSrc(f.filename, f.writer.Bytes())
-	return err
 }

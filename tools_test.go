@@ -1,24 +1,135 @@
 package tools
 
 import (
+	"errors"
+	"io/fs"
 	"io/ioutil"
+	"log"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 )
 
-func TestGoFactor(t *testing.T) {
+func TestAddFile(t *testing.T) {
+	content := `package main
+  func main() {
+	  println("nope")
+  }`
+
+	tools := New()
+	err := tools.Add("main.go", []byte(content))
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	err = tools.Add("main.go", []byte(content))
+	if !errors.Is(err, fs.ErrExist) {
+		t.Errorf("Expected error %v got %v", fs.ErrExist, err)
+	}
+
+	content = `package bar
+  func foo() {
+	  println("foo")
+	}`
+
+	err = tools.Add("foo.go", []byte(content))
+	if !errors.Is(err, ErrPackageMismatch) {
+		t.Errorf("Expected error %v got %v", ErrPackageMismatch, err)
+	}
+}
+
+func TestAddDir(t *testing.T) {
+	dir := os.DirFS("testdata/add_dir_test")
+	tools := New()
+	want, _ := fs.Glob(dir, "*.go")
+	sort.Strings(want)
+	err := tools.AddDir(dir, ".")
+	if err == nil {
+		got := []string{}
+		for name := range tools.sources {
+			got = append(got, name)
+		}
+		sort.Strings(got)
+		if strings.Join(want, "") != strings.Join(got, "") {
+			t.Errorf("Wanted files %v got %v", want, got)
+		}
+	} else {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
+type writeFile string
+
+func (wf writeFile) WriteFile(name string, content []byte) error {
+	return ioutil.WriteFile(filepath.Join(string(wf), name), content, 0644)
+}
+
+func TestWriteFiles(t *testing.T) {
+	dir := os.DirFS("testdata/write_files_test/input")
+	wants := make(map[string]string)
+	wantChanged := []string{}
+	sort.Strings(wantChanged)
+	files, _ := filepath.Glob("testdata/write_files_test/want/*.go")
+	for _, file := range files {
+		want, err := ioutil.ReadFile(file)
+		if err != nil {
+			t.Fatalf("Failed to read test data %q: %v", file, err)
+		}
+		wants[filepath.Base(file)] = string(want)
+		wantChanged = append(wantChanged, filepath.Base(file))
+	}
+
+	outDir, err := os.MkdirTemp("", "example")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer os.RemoveAll(outDir)
+
+	tools := New()
+	err = tools.AddDir(dir, ".")
+	if err == nil {
+		err = tools.OrganizeAll()
+	}
+
+	if err == nil {
+		err = tools.WriteFiles(writeFile(outDir).WriteFile)
+	}
+
+	if err == nil {
+		gots := make(map[string]string)
+		gotChanged := tools.ChangedFiles()
+		sort.Strings(gotChanged)
+		files, _ := filepath.Glob(filepath.Join(outDir, "*.go"))
+		for _, file := range files {
+			got, err := ioutil.ReadFile(file)
+			if err != nil {
+				t.Fatalf("Failed to read output data %q: %v", file, err)
+			}
+			gots[filepath.Base(file)] = string(got)
+		}
+
+		if strings.Join(wantChanged, "") != strings.Join(gotChanged, "") {
+			t.Errorf("Wanted list of changed files: %v got %v", wantChanged, gotChanged)
+		}
+
+		for filename, want := range wants {
+			if want != gots[filename] {
+				t.Errorf("%v: wanted\n%s\ngot\n%s", filename, want, gots[filename])
+			}
+		}
+	}
+
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
+func TestGoTools(t *testing.T) {
 	testFuncs := map[string]func(string, []byte) ([]byte, error){
 		"SeparateValues": SeparateValues,
 		"Organize":       Organize,
-	}
-
-	getFiles := func(files []string, err error) []string {
-		if err != nil {
-			t.Fatalf("Failed to get files: %v", err)
-		}
-		return files
 	}
 
 	readFile := func(filename string) []byte {
@@ -29,10 +140,10 @@ func TestGoFactor(t *testing.T) {
 		return output
 	}
 
-	inputs := getFiles(filepath.Glob("testdata/*.input"))
+	inputs, _ := filepath.Glob("testdata/tools_test/*.input")
 	sort.Strings(inputs)
 
-	wants := getFiles(filepath.Glob("testdata/*.want"))
+	wants, _ := filepath.Glob("testdata/tools_test/*.want")
 	sort.Strings(wants)
 
 	if len(inputs) != len(wants) {

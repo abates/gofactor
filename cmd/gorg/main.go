@@ -74,6 +74,10 @@ func main() {
 				return ioutil.WriteFile(name, content, 0)
 			}
 			err = tools.WriteFiles(wf)
+		} else {
+			for _, change := range tools.Changed() {
+				fmt.Printf("%s\n", string(change.Current))
+			}
 		}
 	}
 

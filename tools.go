@@ -32,9 +32,6 @@ func typStr(expr ast.Expr) (str string) {
 		str = typStr(t.X)
 	case *ast.CallExpr:
 		str = typStr(t.Fun)
-	default:
-		println(fmt.Sprintf("TYPE: %T", expr))
-		str = fmt.Sprintf("%s", expr)
 	}
 	return str
 }

@@ -8,12 +8,9 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
-	"go/types"
 	"io/fs"
 	"path"
 	"path/filepath"
-
-	"golang.org/x/tools/go/loader"
 )
 
 var (
@@ -27,10 +24,17 @@ func typStr(expr ast.Expr) (str string) {
 	}
 
 	switch t := expr.(type) {
+	case *ast.BasicLit:
+		str = t.Kind.String()
 	case *ast.Ident:
 		str = t.Name
 	case *ast.StarExpr:
 		str = typStr(t.X)
+	case *ast.CallExpr:
+		str = typStr(t.Fun)
+	default:
+		println(fmt.Sprintf("TYPE: %T", expr))
+		str = fmt.Sprintf("%s", expr)
 	}
 	return str
 }
@@ -45,8 +49,6 @@ type Tools struct {
 	changed map[string]Change
 	files   map[string]*ast.File
 	sources map[string][]byte
-	info    *types.Info
-	pkg     *types.Package
 	pkgname string
 }
 
@@ -76,7 +78,6 @@ func (f *Tools) AddFiles(fsys fs.FS, files ...string) (err error) {
 	for i := 0; i < len(files) && err == nil; i++ {
 		err = f.AddFile(fsys, files[i])
 	}
-	err = f.Load()
 	return
 }
 
@@ -119,29 +120,6 @@ func (f *Tools) addFile(filename string, src []byte) error {
 		} else if f.pkgname != pkgname {
 			return fmt.Errorf("%w: %s and %s", ErrPackageMismatch, f.pkgname, pkgname)
 		}
-	}
-	return err
-}
-
-// Load will send all the source files through the go/loader package
-// for processing and type resolution.  This must be called prior
-// to any type lookups.  If any source files change due to processing
-// then Load() must be called again before type lookups
-func (f *Tools) Load() error {
-	fset := token.NewFileSet()
-	files := []*ast.File{}
-	for filename, file := range f.files {
-		files = append(files, file)
-		fset.AddFile(filename, -1, len(f.sources[filename]))
-	}
-
-	config := loader.Config{Fset: fset}
-	config.CreateFromFiles(f.pkgname, files...)
-	program, err := config.Load()
-	if err == nil {
-		pkg := program.Package(f.pkgname)
-		f.info = &pkg.Info
-		f.pkg = pkg.Pkg
 	}
 	return err
 }
@@ -247,23 +225,21 @@ func (f *Tools) SeparateValues(filename string) ([]byte, error) {
 
 func (f *Tools) setSrc(filename string, src []byte) (output []byte, err error) {
 	if output, err = format.Source(src); err == nil {
-		if err = f.addFile(filename, output); err == nil {
-			err = f.Load()
-		}
+		err = f.addFile(filename, output)
 	} else {
 		output = src
 	}
 	return output, err
 }
 
-func (f *Tools) typStr(expr ast.Expr) (str string) {
+/*func (f *Tools) typStr(expr ast.Expr) (str string) {
 	if expr == nil {
 		return ""
 	}
 
 	name := types.TypeString(f.info.TypeOf(expr), types.RelativeTo(f.pkg))
 	return name
-}
+}*/
 
 type FileWriter func(filename string, data []byte) error
 

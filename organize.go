@@ -11,9 +11,6 @@ import (
 func Organize(filename string, input []byte) (output []byte, err error) {
 	tools := New()
 	err = tools.Add(filename, input)
-	if err == nil {
-		err = tools.Load()
-	}
 
 	if err == nil {
 		output, err = tools.Organize(filename)
@@ -139,7 +136,8 @@ func (o *organizer) analyzeValue(v *ast.GenDecl, start, end token.Pos) {
 	if v.Lparen.IsValid() && len(vs.Names) == 1 {
 		typName := ""
 		if vs.Type == nil {
-			typName = o.typStr(vs.Values[0])
+			//typName = o.typStr(vs.Values[0])
+			typName = typStr(vs.Values[0])
 		} else {
 			typName = typStr(vs.Type)
 		}

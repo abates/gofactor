@@ -9,9 +9,6 @@ import (
 func SeparateValues(filename string, input []byte) (output []byte, err error) {
 	tools := New()
 	err = tools.Add(filename, input)
-	if err == nil {
-		err = tools.Load()
-	}
 
 	if err == nil {
 		output, err = tools.SeparateValues(filename)

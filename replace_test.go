@@ -39,7 +39,7 @@ func TestReplace(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			r := Replace("test.go", []byte(test.input)).Func(test.replaceName, test.replaceType, []byte(test.replaceContent))
+			r := Replace("test.go", []byte(test.input)).Func(test.replaceName, test.replaceType, test.replaceContent)
 			if r.Err == nil {
 				wantBytes, err := format.Source([]byte(test.want))
 				test.want = string(wantBytes)

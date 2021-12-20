@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	tools "github.com/abates/gotools"
-	"github.com/abates/gotools/internal/diff"
 )
 
 var (
@@ -62,8 +61,8 @@ func main() {
 		if *list {
 			fmt.Fprintln(os.Stderr, strings.Join(tools.ChangedFiles(), "\n"))
 		} else if *doDiff {
-			for _, change := range tools.Changed() {
-				if d, err := diff.Diff("", change.Orig, change.Current); err != nil {
+			for _, change := range tools.Changes() {
+				if d, err := diff("", change.Orig, change.Current); err != nil {
 					fmt.Fprintf(os.Stderr, "Couldn't perform diff on %s: %v", change.Filename, err)
 				} else if len(d) > 0 {
 					fmt.Fprintf(os.Stdout, "%s\n%s", change.Filename, string(d))
@@ -75,7 +74,7 @@ func main() {
 			}
 			err = tools.WriteFiles(wf)
 		} else {
-			for _, change := range tools.Changed() {
+			for _, change := range tools.Changes() {
 				fmt.Printf("%s\n", string(change.Current))
 			}
 		}

@@ -1,9 +1,10 @@
 package tools
 
 import (
-	"fmt"
-	"go/ast"
 	"go/token"
+
+	"github.com/dave/dst"
+	"github.com/dave/dst/dstutil"
 )
 
 func SeparateValues(filename string, input []byte) (output []byte, err error) {
@@ -17,17 +18,16 @@ func SeparateValues(filename string, input []byte) (output []byte, err error) {
 }
 
 type valueCleaner struct {
-	*formatter
+	file *dst.File
 }
 
-func (vc *valueCleaner) separateValDecl(decl *ast.GenDecl) {
-	pos := decl.Pos()
+func (vc *valueCleaner) separateValDecl(decl *dst.GenDecl) (results []dst.Node) {
 	// only refactor parenthesized decalarations
-	if decl.Lparen.IsValid() {
+	if decl.Lparen {
 		lastType := ""
-		var prev *ast.ValueSpec
+		newDecl := &dst.GenDecl{Tok: decl.Tok, Lparen: true, Rparen: true, Decs: decl.Decs}
 		for _, spec := range decl.Specs {
-			vs := spec.(*ast.ValueSpec)
+			vs := spec.(*dst.ValueSpec)
 			if len(vs.Names) < 2 {
 				if lastType == "" {
 					lastType = typStr(vs.Type)
@@ -37,58 +37,40 @@ func (vc *valueCleaner) separateValDecl(decl *ast.GenDecl) {
 				// the previous, and if so, close the block
 				// and start a new one
 				if vs.Type != nil && lastType != typStr(vs.Type) {
-					// make sure to capture the comment
-					end := prev.End()
-					if prev.Comment != nil {
-						end = prev.Comment.End()
-					}
-
-					// write out the previous spec
-					vc.writePos(pos, end)
-
-					start := vs.Pos()
-					if vs.Doc != nil {
-						start = vs.Doc.Pos()
-					}
-
-					// end the const block and start a new one
+					// end the block and start a new one
 					// with the next spec
-					vc.writeStr(fmt.Sprintf("\n)\n\n%s (\n", decl.Tok))
 					lastType = typStr(vs.Type)
-					pos = start
+					newDecl.Specs[len(newDecl.Specs)-1].Decorations().After = dst.None
+					results = append(results, newDecl)
+					newDecl = &dst.GenDecl{Tok: decl.Tok, Lparen: true, Rparen: true}
+					spec.Decorations().Before = dst.NewLine
 				}
+				newDecl.Specs = append(newDecl.Specs, spec)
 			}
-			prev = vs
 		}
-
-		if pos != decl.Pos() {
-			vc.writePos(pos, decl.End())
-		}
+		results = append(results, newDecl)
+	} else {
+		results = []dst.Node{decl}
 	}
-
-	if pos == decl.Pos() {
-		vc.writePos(decl.Pos(), decl.End())
-	}
+	return
 }
 
-func (vc *valueCleaner) separateValDecls() {
-	pos := token.Pos(1)
-	for _, decl := range vc.file.Decls {
-		if d, ok := decl.(*ast.GenDecl); ok {
-			vc.writePos(pos, d.Pos())
-			if d.Tok == token.CONST || d.Tok == token.VAR {
-				vc.separateValDecl(d)
-				pos = decl.End()
-			} else {
-				pos = decl.Pos()
+func (vc *valueCleaner) walk(cursor *dstutil.Cursor) bool {
+	if d, ok := cursor.Node().(*dst.GenDecl); ok {
+		if d.Tok == token.CONST || d.Tok == token.VAR {
+			results := vc.separateValDecl(d)
+			cursor.Replace(results[0])
+			for _, n := range results[1:] {
+				n.Decorations().Before = dst.EmptyLine
+				cursor.InsertAfter(n)
 			}
-		} else {
-			vc.writePos(pos, decl.End())
-			pos = decl.End()
 		}
 	}
 
-	if pos != vc.file.End() {
-		vc.writePos(pos, vc.file.End())
-	}
+	_, ok := cursor.Node().(*dst.File)
+	return ok
+}
+
+func (vc *valueCleaner) separateValDecls() *dst.File {
+	return dstutil.Apply(vc.file, vc.walk, nil).(*dst.File)
 }

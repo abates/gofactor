@@ -64,3 +64,18 @@ func (mt *MyType) ThisAdd(other int) {
 func (mt MyType) Add(other int) int {
 	return int(mt) + other
 }
+
+const (
+  ConstVar1 = 1
+  ConstVar2 = 2
+  ConstVar3 = 3
+  ConstVar4 = 4 
+)
+
+var (
+  FooVar1 = 1
+  FooVar2 = 2
+  FooVar3 = 3
+  FooVar4 = 4
+)
+

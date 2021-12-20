@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"go/ast"
 	"go/format"
-	"go/parser"
-	"go/token"
 	"io/fs"
 	"io/ioutil"
 	"path/filepath"
+
+	"github.com/dave/dst"
+	"github.com/dave/dst/decorator"
 )
 
 var (
@@ -18,23 +18,25 @@ var (
 	ErrPackageMismatch = errors.New("Different package declarations found")
 )
 
-func typStr(expr ast.Expr) (str string) {
+func typStr(expr interface{}) (str string) {
 	if expr == nil {
 		return ""
 	}
 
 	switch t := expr.(type) {
-	case *ast.BasicLit:
+	case *dst.BasicLit:
 		str = t.Kind.String()
-	case *ast.Ident:
+	case *dst.Ident:
 		str = t.Name
-	case *ast.StarExpr:
+	case *dst.StarExpr:
 		str = typStr(t.X)
-	case *ast.CallExpr:
+	case *dst.CallExpr:
 		str = typStr(t.Fun)
 	}
 	return str
 }
+
+type FileWriter func(filename string, data []byte) error
 
 type Change struct {
 	Filename string
@@ -42,20 +44,16 @@ type Change struct {
 	Current  []byte
 }
 
-type FileWriter func(filename string, data []byte) error
-
 type Tools struct {
 	changed map[string]Change
-	files   map[string]*ast.File
-	sources map[string][]byte
+	dfiles  map[string]*dst.File
 	pkgname string
 }
 
 func New() *Tools {
 	f := &Tools{
 		changed: make(map[string]Change),
-		files:   make(map[string]*ast.File),
-		sources: make(map[string][]byte),
+		dfiles:  make(map[string]*dst.File),
 	}
 	return f
 }
@@ -65,10 +63,30 @@ func New() *Tools {
 // file set then fs.ErrExist is returned. Otherwise any parse
 // errors are returned
 func (f *Tools) Add(filename string, src []byte) error {
-	if _, found := f.files[filename]; found {
+	if _, found := f.dfiles[filename]; found {
 		return fs.ErrExist
 	}
-	return f.addFile(filename, src)
+
+	err := f.parse(filename, src)
+	if err == nil {
+		dstFile := f.dfiles[filename]
+		pkgname := dstFile.Name.Name
+		if f.pkgname == "" {
+			f.pkgname = pkgname
+		} else if f.pkgname != pkgname {
+			return fmt.Errorf("%w: %s and %s", ErrPackageMismatch, f.pkgname, pkgname)
+		}
+	}
+	return err
+}
+
+// AddFile will read the file and add it to the local fileset
+func (f *Tools) AddFile(filename string) error {
+	src, err := ioutil.ReadFile(filename)
+	if err == nil {
+		err = f.Add(filename, src)
+	}
+	return err
 }
 
 // AddDir will add all the *.go files in the given directory
@@ -83,38 +101,6 @@ func (f *Tools) AddDir(dir string) error {
 	return err
 }
 
-// AddFile will read the file and add it to the local fileset
-func (f *Tools) AddFile(filename string) error {
-	src, err := ioutil.ReadFile(filename)
-	if err == nil {
-		err = f.Add(filename, src)
-	}
-	return err
-}
-
-func (f *Tools) addFile(filename string, src []byte) error {
-	orig, found := f.sources[filename]
-	if found && !bytes.Equal(orig, src) {
-		if c, found := f.changed[filename]; found {
-			c.Current = src
-		} else {
-			f.changed[filename] = Change{Filename: filename, Orig: orig, Current: src}
-		}
-	}
-
-	err := f.parse(filename, src)
-	if err == nil {
-		astFile := f.files[filename]
-		pkgname := astFile.Name.Name
-		if f.pkgname == "" {
-			f.pkgname = pkgname
-		} else if f.pkgname != pkgname {
-			return fmt.Errorf("%w: %s and %s", ErrPackageMismatch, f.pkgname, pkgname)
-		}
-	}
-	return err
-}
-
 // AddFiles will add all the files supplied
 func (f *Tools) AddFiles(files ...string) (err error) {
 	for i := 0; i < len(files) && err == nil; i++ {
@@ -123,7 +109,9 @@ func (f *Tools) AddFiles(files ...string) (err error) {
 	return
 }
 
-func (f *Tools) Changed() (changed []Change) {
+// Changes returns a slice of Change structs containing information
+// about each file that was changed
+func (f *Tools) Changes() (changed []Change) {
 	for _, change := range f.changed {
 		changed = append(changed, change)
 	}
@@ -139,32 +127,54 @@ func (f *Tools) ChangedFiles() (changed []string) {
 	return changed
 }
 
+func (f *Tools) format(filename string, cb func()) ([]byte, error) {
+	buf := &bytes.Buffer{}
+	decorator.Fprint(buf, f.dfiles[filename])
+	start := buf.Bytes()
+
+	cb()
+
+	output := &bytes.Buffer{}
+	decorator.Fprint(output, f.dfiles[filename])
+	end, err := format.Source(output.Bytes())
+	if err != nil {
+		end = output.Bytes()
+	}
+
+	if !bytes.Equal(start, end) {
+		change, found := f.changed[filename]
+		if !found {
+			change = Change{
+				Filename: filename,
+				Orig:     start,
+			}
+		}
+		change.Current = end
+		f.changed[filename] = change
+	}
+	return end, err
+}
+
 func (f *Tools) Organize(filename string) (output []byte, err error) {
-	output, err = f.SeparateValues(filename)
+	_, err = f.SeparateValues(filename)
 	if err != nil {
 		return
 	}
 
-	o := &organizer{
-		formatter: &formatter{
-			Tools:  f,
-			file:   f.files[filename],
-			src:    f.sources[filename],
-			writer: bytes.NewBuffer(nil),
-		},
-		typIndex: make(map[string]*typSrc),
-	}
+	output, err = f.format(filename, func() {
+		organizer := organizer{
+			file: f.dfiles[filename],
+		}
 
-	err = o.organize()
-	if err == nil {
-		output, err = f.setSrc(filename, o.writer.Bytes())
-	}
-	return
+		f.dfiles[filename] = organizer.organize()
+	})
+
+	return output, err
 }
 
 func (f *Tools) OrganizeAll() (err error) {
 	filenames := []string{}
-	for filename := range f.files {
+	for filename := range f.dfiles {
 		filenames = append(filenames, filename)
 	}
 	return f.OrganizeFiles(filenames...)
@@ -181,10 +191,9 @@ func (f *Tools) OrganizeFiles(files ...string) (err error) {
 }
 
 func (f *Tools) parse(filename string, src []byte) error {
-	astFile, err := parser.ParseFile(token.NewFileSet(), filename, src, parser.ParseComments)
+	dstFile, err := decorator.Parse(src)
 	if err == nil {
-		f.files[filename] = astFile
-		f.sources[filename] = src
+		f.dfiles[filename] = dstFile
 	}
 	return err
 }
@@ -220,30 +229,18 @@ func (f *Tools) parse(filename string, src []byte) error {
 //     Str4        = "string4"
 //   )
 func (f *Tools) SeparateValues(filename string) ([]byte, error) {
-	file, found := f.files[filename]
+	dfile, found := f.dfiles[filename]
 	if !found {
 		return nil, fmt.Errorf("%q: %w", filename, fs.ErrNotExist)
 	}
 
-	vf := &valueCleaner{
-		formatter: &formatter{
-			Tools:  f,
-			file:   file,
-			src:    f.sources[filename],
-			writer: bytes.NewBuffer(nil),
-		},
-	}
+	output, err := f.format(filename, func() {
+		vf := &valueCleaner{
+			file: dfile,
+		}
 
-	vf.separateValDecls()
-	return f.setSrc(filename, vf.writer.Bytes())
-}
-
-func (f *Tools) setSrc(filename string, src []byte) (output []byte, err error) {
-	if output, err = format.Source(src); err == nil {
-		err = f.addFile(filename, output)
-	} else {
-		output = src
-	}
+		f.dfiles[filename] = vf.separateValDecls()
+	})
 	return output, err
 }
 
@@ -252,7 +249,12 @@ func (f *Tools) setSrc(filename string, src []byte) (output []byte, err error) {
 // the error is returned
 func (f *Tools) WriteFiles(writer FileWriter) (err error) {
 	for filename := range f.changed {
-		err = writer(filename, f.sources[filename])
+		buf := &bytes.Buffer{}
+		err = decorator.Fprint(buf, f.dfiles[filename])
+		if err == nil {
+			err = writer(filename, buf.Bytes())
+		}
+
 		if err != nil {
 			break
 		}

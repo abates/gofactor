@@ -1,11 +1,11 @@
 package tools
 
 import (
-	"fmt"
-	"go/ast"
 	"go/token"
 	"sort"
-	"strings"
+
+	"github.com/dave/dst"
+	"github.com/dave/dst/dstutil"
 )
 
 func Organize(filename string, input []byte) (output []byte, err error) {
@@ -18,194 +18,152 @@ func Organize(filename string, input []byte) (output []byte, err error) {
 	return
 }
 
-type namedList []namedSrc
-
-func (o namedList) Len() int { return len(o) }
-
-func (o namedList) Less(i, j int) bool {
-	oi, oj := strings.ToLower(o[i].name()), strings.ToLower(o[j].name())
-	if oi == oj {
-		return o[i].name() < o[j].name()
-	}
-	return oi < oj
-}
-
-func (o namedList) Swap(i, j int) { o[i], o[j] = o[j], o[i] }
-
-func (o namedList) write(f *formatter) {
-	sort.Sort(o)
-	for _, s := range o {
-		s.write(f)
-	}
-}
-
-type namedSrc interface {
-	name() string
-	write(*formatter)
-}
-
-type nodeName string
-
-func (nn nodeName) name() string { return string(nn) }
-
-type nodeSrc struct {
-	nodeName
-	start token.Pos
-	end   token.Pos
-}
-
-func (n *nodeSrc) write(f *formatter) {
-	f.writePos(n.start, n.end)
-	f.writeStr("\n\n")
-}
-
 type organizer struct {
-	*formatter
-	pkg      token.Pos
-	imports  namedList
-	values   namedList
-	funcs    namedList
-	typs     namedList
-	typIndex map[string]*typSrc
-	pos      token.Pos
+	file  *dst.File
+	types map[string]sortableSource
 }
 
-func (o *organizer) analyzeFunc(v *ast.FuncDecl) {
-	start := v.Pos()
-	if v.Doc != nil {
-		start = v.Doc.Pos()
-	}
-	end := v.End()
-	o.pos = end
+func (o *organizer) analyzeTypes() (names []string) {
+	o.types = make(map[string]sortableSource)
+	walk := func(cursor *dstutil.Cursor) bool {
+		cont := false
+		switch n := cursor.Node().(type) {
+		case *dst.GenDecl:
+			if n.Tok == token.TYPE {
+				// only organize non-parenthesized types
+				if !n.Lparen {
+					ts := n.Specs[0].(*dst.TypeSpec)
+					o.types[ts.Name.Name] = sortableSource{n}
+					names = append(names, ts.Name.Name)
+					cursor.Delete()
+				}
+			}
+		case *dst.File:
+			cont = true
+		}
 
-	if v.Recv == nil { // regular function
-		if v.Type.Results != nil {
-			for _, result := range v.Type.Results.List {
-				if typ, found := o.typIndex[typStr(result.Type)]; found {
-					typ.funcs = append(typ.funcs, &nodeSrc{nodeName: nodeName(v.Name.Name), start: start, end: end})
-					return
+		return cont
+	}
+
+	o.file = dstutil.Apply(o.file, walk, nil).(*dst.File)
+	return names
+}
+
+func (o *organizer) analyzeFunc(cursor *dstutil.Cursor) {
+	fn := cursor.Node().(*dst.FuncDecl)
+	typName := ""
+	if fn.Recv == nil {
+		if fn.Type.Results != nil {
+			for _, result := range fn.Type.Results.List {
+				typName = typStr(result.Type)
+				if _, found := o.types[typName]; found {
+					o.types[typName] = append(o.types[typName], fn)
+					cursor.Delete()
+					break
 				}
 			}
 		}
-	} else { // method
-		if typ, found := o.typIndex[typStr(v.Recv.List[0].Type)]; found {
-			typ.methods = append(typ.methods, &nodeSrc{nodeName: nodeName(v.Name.Name), start: start, end: end})
-			return
-		}
-	}
-
-	o.funcs = append(o.funcs, &nodeSrc{nodeName: nodeName(v.Name.Name), start: start, end: end})
-}
-
-func (o *organizer) analyzeType(v *ast.GenDecl) {
-	start := v.Pos()
-	if v.Doc != nil {
-		start = v.Doc.Pos()
-	}
-	end := v.End()
-
-	// only organize non-parenthesized types
-	if v.Lparen.IsValid() {
-		return
-	}
-
-	ts := v.Specs[0].(*ast.TypeSpec)
-	o.typIndex[ts.Name.Name] = &typSrc{
-		nodeName: nodeName(ts.Name.Name),
-		start:    start,
-		end:      end,
-	}
-	o.typs = append(o.typs, o.typIndex[ts.Name.Name])
-}
-
-func (o *organizer) analyzeTypes() {
-	for _, decl := range o.file.Decls {
-		if d, ok := decl.(*ast.GenDecl); ok {
-			if d.Tok == token.TYPE {
-				o.analyzeType(d)
-			}
+	} else {
+		typName := typStr(fn.Recv.List[0].Type)
+		if _, found := o.types[typName]; found {
+			o.types[typName] = append(o.types[typName], fn)
+			cursor.Delete()
 		}
 	}
 }
 
-func (o *organizer) analyzeValue(v *ast.GenDecl, start, end token.Pos) {
-	vs := v.Specs[0].(*ast.ValueSpec)
-
-	// only organize parenthesized blocks and
-	// single named values
-	if v.Lparen.IsValid() && len(vs.Names) == 1 {
-		typName := ""
+func (o *organizer) analyzeValue(cursor *dstutil.Cursor) {
+	decl := cursor.Node().(*dst.GenDecl)
+	vs := decl.Specs[0].(*dst.ValueSpec)
+	typName := ""
+	if decl.Lparen && len(vs.Names) == 1 {
 		if vs.Type == nil {
-			//typName = o.typStr(vs.Values[0])
 			typName = typStr(vs.Values[0])
 		} else {
 			typName = typStr(vs.Type)
 		}
-
-		typ, found := o.typIndex[typName]
-		if found {
-			typ.values = append(typ.values, &nodeSrc{nodeName: nodeName(v.Tok.String()), start: start, end: end})
-			o.pos = end
-			return
-		}
-	}
-	o.values = append(o.values, &nodeSrc{nodeName: nodeName(v.Tok.String()), start: start, end: end})
-}
-
-func (o *organizer) organize() error {
-	o.analyzeTypes()
-	for _, decl := range o.file.Decls {
-		switch d := decl.(type) {
-		case *ast.FuncDecl:
-			o.analyzeFunc(d)
-		case *ast.GenDecl:
-			start := d.Pos()
-			if d.Doc != nil {
-				start = d.Doc.Pos()
-			}
-			end := d.End()
-
-			if d.Tok == token.CONST || d.Tok == token.VAR {
-				o.analyzeValue(d, start, end)
-			} else if d.Tok == token.IMPORT {
-				o.imports = append(o.imports, &nodeSrc{nodeName: "import", start: start, end: end})
-			} else if d.Tok != token.TYPE {
-				return fmt.Errorf("Unknown declaration node: %s", d.Tok)
-			}
-		case *ast.BadDecl:
-			return fmt.Errorf("Syntax error at %d", decl.Pos())
-		default:
-			return fmt.Errorf("Unknown declaration node %T", decl)
-		}
 	}
 
-	pkg := o.file.Package
-	o.writePos(1, pkg)
-	o.writeStr(o.readline(pkg))
-	o.imports.write(o.formatter)
-	o.values.write(o.formatter)
-	o.funcs.write(o.formatter)
-	o.typs.write(o.formatter)
-
-	return nil
+	if _, found := o.types[typName]; found {
+		o.types[typName] = append(o.types[typName], decl)
+		cursor.Delete()
+	}
 }
 
-type typSrc struct {
-	nodeName
-	start   token.Pos
-	end     token.Pos
-	values  namedList
-	funcs   namedList
-	methods namedList
+func (o *organizer) organize() *dst.File {
+	names := o.analyzeTypes()
+
+	walk := func(cursor *dstutil.Cursor) bool {
+		cont := false
+		switch n := cursor.Node().(type) {
+		case *dst.FuncDecl:
+			o.analyzeFunc(cursor)
+		case *dst.GenDecl:
+			if n.Tok == token.CONST || n.Tok == token.VAR {
+				o.analyzeValue(cursor)
+			}
+		case *dst.File:
+			cont = true
+		}
+
+		return cont
+	}
+
+	result := dstutil.Apply(o.file, walk, nil).(*dst.File)
+	sort.Sort(sortableSource(result.Decls))
+	sort.Strings(names)
+	for _, name := range names {
+		sort.Sort(o.types[name])
+		result.Decls = append(result.Decls, o.types[name]...)
+	}
+
+	return result
 }
 
-func (t *typSrc) write(f *formatter) {
-	f.writePos(t.start, t.end)
-	f.writeStr("\n\n")
-	t.values.write(f)
-	f.writeStr("\n\n")
-	t.funcs.write(f)
-	f.writeStr("\n\n")
-	t.methods.write(f)
-	f.writeStr("\n\n")
+type sortableSource []dst.Decl
+
+func (ss sortableSource) prec(i int) int {
+	if decl, ok := ss[i].(*dst.GenDecl); ok {
+		switch decl.Tok {
+		case token.IMPORT:
+			return 0
+		case token.TYPE:
+			return 1
+		case token.CONST:
+			return 2
+		case token.VAR:
+			return 3
+		}
+	} else if decl, ok := ss[i].(*dst.FuncDecl); ok {
+		if decl.Recv == nil {
+			return 4
+		}
+	}
+	return 5
+}
+
+func (ss sortableSource) name(i int) (name string) {
+	switch n := ss[i].(type) {
+	case *dst.FuncDecl:
+		name = n.Name.Name
+	case *dst.GenDecl:
+		name = n.Tok.String()
+	}
+	return
+}
+
+func (ss sortableSource) Less(i, j int) bool {
+	if ss.prec(i) != ss.prec(j) {
+		return ss.prec(i) < ss.prec(j)
+	}
+
+	return ss.name(i) < ss.name(j)
+}
+
+func (ss sortableSource) Len() int {
+	return len(ss)
+}
+
+func (ss sortableSource) Swap(i, j int) {
+	ss[i], ss[j] = ss[j], ss[i]
 }

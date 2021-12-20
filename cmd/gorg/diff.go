@@ -4,7 +4,7 @@
 
 // Package diff implements a Diff function that compare two inputs
 // using the 'diff' tool.
-package diff
+package main
 
 import (
 	"bytes"
@@ -16,7 +16,7 @@ import (
 )
 
 // Returns diff of two arrays of bytes in diff tool format.
-func Diff(prefix string, b1, b2 []byte) ([]byte, error) {
+func diff(prefix string, b1, b2 []byte) ([]byte, error) {
 	f1, err := writeTempFile(prefix, b1)
 	if err != nil {
 		return nil, err

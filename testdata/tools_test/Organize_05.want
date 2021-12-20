@@ -1,0 +1,22 @@
+package foo
+
+const (
+	MyConst1 = iota
+	MyConst2
+	MyConst3
+	MyConst4
+)
+
+var (
+	MyVar1 = int(1)
+	MyVar2 = int(2)
+	MyVar3 = int(3)
+	MyVar4 = int(4)
+)
+
+var (
+	MyVar5 = int(1)
+	MyVar6 = int(2)
+	MyVar7 = int(3)
+	MyVar8 = int(4)
+)

@@ -1,0 +1,39 @@
+package foo
+
+type MyType1 int
+
+const (
+	MyConst1 MyType1 = iota
+	MyConst2
+	MyConst3
+	MyConst4
+)
+
+var (
+	MyVar1 = MyType1(1)
+	MyVar2 = MyType1(2)
+	MyVar3 = MyType1(3)
+	MyVar4 = MyType1(4)
+)
+
+func Convert(i int) MyType1 {
+	return MyType1(i)
+}
+
+func New() MyType1 {
+	return MyType1(1)
+}
+
+func (mt MyType1) Add(other int) int {
+	return int(mt) + other
+}
+
+func (mt *MyType1) ThisAdd(other int) {
+	*mt = MyType1(other) + *mt
+}
+
+type MyType2 int
+
+func New2() MyType2 {
+	return MyType2(2)
+}
